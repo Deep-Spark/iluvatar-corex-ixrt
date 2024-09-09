@@ -1,0 +1,2 @@
+# IxRT Python Samples
+These are some simple examples provided in this folder, including constructing a ResNet18 network with IxRT custom layer API, handling code errors, demonstrating how to use IxRT deploy tool to quantize an ONNX model, ResNet18 inference interface, using PPQ quantization tool, and YOLOv3 inference.

@@ -1,0 +1,49 @@
+# Copyright (c) 2024, Shanghai Iluvatar CoreX Semiconductor Co., Ltd.
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+
+# BSZ : 构建engine以及推理时的batchsize
+# IMGSIZE : 模型输入hw大小
+# PRECISION : [float16, int8]
+# ORIGINE_MODEL : 原始onnx文件
+# DATASET_DIR : 量化/推理数据集路径
+# YOLOV5_CHECKPOINTS_DIR : 模型路径
+BSZ=1
+IMGSIZE=640
+PRECISION=float16
+ORIGINE_MODEL=${YOLOV5_CHECKPOINTS_DIR}/yolov5s.onnx
+DATASET_DIR=./val2017/
+
+######################## 以下参数在该example中不建议修改 ######################
+# MODEL_NAME : 生成onnx/engine的basename
+# LAYER_FUSION : decoder部分走融合算子实现  0不融合 1融合
+# DECODER_FASTER : 有两种融合实现,faster版本速度快且可以直接对接gpu nms;另一种实现的输出和onnx保持一致.  1:faster
+MODEL_NAME=yolov5s
+LAYER_FUSION=1
+DECODER_FASTER=1
+# QUANT CONFIG (仅PRECISION为int8时生效)
+    # QUANT_OBSERVER : 量化策略，可选 [hist_percentile, percentile, minmax, entropy, ema]
+    # QUANT_BATCHSIZE : 量化时组dataloader的batchsize, 最好和onnx中的batchsize保持一致，有些op可能推导shape错误(比如Reshape)
+    # QUANT_STEP : 量化步数
+    # QUANT_SEED : 随机种子 保证量化结果可复现
+    # QUANT_EXIST_ONNX & QUANT_EXIST_SCALE_JSON: 如果有其他来源的量化模型则填写
+QUANT_OBSERVER=hist_percentile
+QUANT_BATCHSIZE=1
+QUANT_STEP=32
+QUANT_SEED=42
+QUANT_FORMAT="ppq"
+DISABLE_QUANT_LIST=(Reshape_199 Transpose_200 Sigmoid_201 Split_202 Mul_204 Add_206 Mul_208 Mul_210 Pow_212 Mul_214 Concat_215 Reshape_216 Reshape_218 Transpose_219 Sigmoid_220 Split_221 Mul_223 Add_225 Mul_227 Mul_229 Pow_231 Mul_233 Concat_234 Reshape_235 Reshape_237 Transpose_238 Sigmoid_239 Split_240 Mul_242 Add_244 Mul_246 Mul_248 Pow_250 Mul_252 Concat_253 Reshape_254 Concat_255)
+QUANT_EXIST_ONNX=
+QUANT_EXIST_SCALE_JSON=

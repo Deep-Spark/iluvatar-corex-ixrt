@@ -1,0 +1,46 @@
+# Copyright (c) 2024, Shanghai Iluvatar CoreX Semiconductor Co., Ltd.
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+
+if (NOT SAMPLE_SOURCES)
+   message(FATAL_ERROR "You must define non-empty SAMPLE_SOURCES variable before including this template")
+endif()
+
+# check dependency
+set(SAMPLE_DEP_LIBS
+        ${LIBRT} ${CUDA_LIBRARIES} ${CUDA_cudadevrt_LIBRARY} ${LIBPARSER}
+        ${EXTRA_LIBS} dl
+)
+if(${PLUGINS_NEEDED})
+    list(APPEND SAMPLE_DEP_LIBS ${LIBPLUGIN})
+endif()
+set(TARGET_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+get_filename_component(SAMPLES_DIR ../ ABSOLUTE)
+get_filename_component(SAMPLE_DIR_NAME ${TARGET_DIR} NAME)
+set(TARGET_NAME ${SAMPLE_DIR_NAME})
+CUDA_ADD_EXECUTABLE(${TARGET_NAME}
+    ${SAMPLE_SOURCES}
+    ${SAMPLES_COMMON_SOURCES}
+)
+
+
+target_link_libraries(${TARGET_NAME} PUBLIC
+    ${SAMPLE_DEP_LIBS}
+    -Wl,--unresolved-symbols=ignore-in-shared-libs
+)
+
+target_include_directories(${TARGET_NAME} PRIVATE ${IXRT_INCLUDE_DIR})
+target_link_directories(${TARGET_NAME} PUBLIC ${IXRT_LIB_DIR})
+set_target_properties(${TARGET_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

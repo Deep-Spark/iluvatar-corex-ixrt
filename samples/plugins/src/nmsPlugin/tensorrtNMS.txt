@@ -1,0 +1,85 @@
+# Copyright (c) 2024, Shanghai Iluvatar CoreX Semiconductor Co., Ltd.
+# All Rights Reserved.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+#
+
+0.ixrt cuinferNMSBatched
+        in: input  [batch_size, 6, number_boxes] NCHW
+        out:output [batch_size, 6, max_output_boxes]
+            output [batch_size, 1, 1]
+
+
+
+1.efficient nms
+    Standard nms mode
+        in: bbox  [batch_size, number_boxes, 4] or [batch_size, number_boxes, number_classes, 4]
+            score [batch_size, number_boxes, number_classes]
+        out:num_detections    [batch_size, 1]
+            detection_boxes   [batch_size, max_output_boxes, 4]
+            detection_scores  [batch_size, max_output_boxes]
+            detection_classes [batch_size, max_output_boxes]
+
+    Fused Box Decoder Mode
+        in: bbox     [batch_size, number_boxes, 4] or [batch_size, number_boxes, number_classes, 4]
+            score    [batch_size, number_boxes, number_classes]
+            anchors  [1, number_boxes, 4] or [batch_size, number_boxes, 4]
+        out:num_detections    [batch_size, 1]
+            detection_boxes   [batch_size, max_output_boxes, 4]
+            detection_scores  [batch_size, max_output_boxes]
+            detection_classes [batch_size, max_output_boxes]
+
+
+2.nms
+        in: loc_data [batchSize, number_boxes * numLocClasses * 4, 1, 1]    // numLocClasses is 1 if each bounding box predicts the probability for all candidate classes
+            conf_data [batchSize, number_boxes * numClasses, 1, 1]
+            prior_data [batchSize, 2, numPriors * 4, 1]
+        out: [batchSize, 1, max_output_boxes, 7]  // box  count, locations, scores, cls id
+
+
+2.batchnms
+        in: boxes [batch_size, number_boxes, number_classes, 4]
+            score [batch_size, number_boxes, number_classes]
+
+        out: num_detections [batch_size, 1]
+             nmsed_boxes    [batch_size, max_output_boxes, 4]
+             nmsed_scores   [batch_size, max_output_boxes]
+             nmsed_classes  [batch_size, max_output_boxes]
+
+
+nmsPlugin
+        in: input  [batch_size, 6, number_boxes] NCHW
+        out:output [batch_size, 6, max_output_boxes]
+            output [batch_size, 1, 1]
+
+
+
+
+
+
+yoloxDecoder new
+        in: cls  [batch_size, 4,  h, w]
+            bbox [batch_size, number_classes, h, w]
+            conf [batch_size, 1,  h, w]
+
+        out: boxes [batch_size, 4, number_classes, number_boxes]
+             score [batch_size,    number_classes, number_boxes]
+
+nmsPlugin new
+        in: boxes [batch_size, 4, number_classes, number_boxes]
+            score [batch_size,    number_classes, number_boxes]
+
+        out: num_detections [batch_size, 1]
+             nmsed_boxes    [batch_size, max_output_boxes, 4]
+             nmsed_scores   [batch_size, max_output_boxes]
+             nmsed_classes  [batch_size, max_output_boxes]
