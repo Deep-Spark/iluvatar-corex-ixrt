@@ -89,10 +89,12 @@ def copy_ixrt_tensor_as_np(tensor, ort_style=True):
         np_array = remove_padding(np_array, tensor.paddings)
         # process tensor data format to be linear, which is consistent with ort
         if tensor.format == ixrt.TensorFormat.HWC:
-            assert len(tensor.shape) >= 3
-            np_array = np_array.transpose(
-                0, np_array.ndim - 1, *range(1, np_array.ndim - 1)
-            )
+            assert (len(tensor.shape) >= 3 or len(tensor.shape) == 1)
+            if len(tensor.shape) == 1:
+                np_array = np_array
+            else:
+                np_array = np_array.transpose(
+                0, np_array.ndim - 1, *range(1, np_array.ndim - 1))
     return np_array
 
 

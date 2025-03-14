@@ -307,7 +307,7 @@ class FusionCustomFCActivation(Fusion):
             fc_node = nodes[0]
             activation_type = 3
             if node.op_type == "Gelu":
-                activation_type = 21
+                activation_type = 3
             if node.op_type == "Relu":
                 activation_type = 4
 

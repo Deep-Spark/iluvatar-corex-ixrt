@@ -16,17 +16,18 @@
 
 import warnings
 from typing import Union
-
 import torch.nn
 
 from ..backend.onnx.onnx_source import OnnxSource
-from ..backend.torch.onnx import export
+from ..backend.torch.onnx import export, rename_model_edges
+
 
 
 def create_source(
     model: Union[str, torch.nn.Module],
     example_inputs=None,
     cvt_onnx_kwargs: dict = None,
+    rename_edges: bool = False, 
     **kwargs,
 ):
     if isinstance(model, (torch.nn.Module, torch.jit.ScriptFunction)):
@@ -48,6 +49,7 @@ def create_source(
         )
 
         model = tmp_saved_path
-
+    if rename_edges: 
+        model = rename_model_edges(model)
     source = OnnxSource(model, load_kwargs=cvt_onnx_kwargs)
     return source

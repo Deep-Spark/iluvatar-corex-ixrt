@@ -31,17 +31,23 @@ cudaError_t NMSImpl(cudaStream_t stream, int32_t const max_threads_per_block, co
                     const void* scores_data, void* keep_count, void* nmsed_boxes, void* nmsed_scores,
                     void* nmsed_classes, void* workspace) {
     cudaError_t statue;
-
+    int top_k = 2048;
     size_t indices_size = detectionForwardPreNMSSize<int>(batch_size, per_batch_scores_size);
     void* indices = workspace;
 
-    size_t post_NMS_scores_size = detectionForwardPostNMSSize<T>(batch_size, num_classes, num_priors);
+    size_t post_NMS_scores_size = detectionForwardPostNMSSize<T>(batch_size, num_classes, top_k);
     void* post_NMS_scores = nextWorkspacePtr((int8_t*)indices, indices_size);
     size_t post_NMS_indices_size =
-        detectionForwardPostNMSSize<int>(batch_size, num_classes, num_priors);  // indices are full int32
+        detectionForwardPostNMSSize<int>(batch_size, num_classes, top_k);  // indices are full int32
     void* post_NMS_indices = nextWorkspacePtr((int8_t*)post_NMS_scores, post_NMS_scores_size);
 
-    void* sorting_workspace = nextWorkspacePtr((int8_t*)post_NMS_indices, post_NMS_indices_size);
+    size_t post_sort_scores_size = detectionForwardPostNMSSize<T>(batch_size, num_classes, top_k);
+    void* post_sort_scores = nextWorkspacePtr((int8_t*)post_NMS_indices, post_NMS_indices_size);
+    size_t post_sort_indices_size =
+        detectionForwardPostNMSSize<int>(batch_size, num_classes, top_k);  // indices are full int32
+    void* post_sort_indices = nextWorkspacePtr((int8_t*)post_sort_scores, post_sort_scores_size);
+
+    void* sorting_workspace = nextWorkspacePtr((int8_t*)post_sort_indices, post_sort_indices_size);
     // Sort the scores so that the following NMS could be applied.
     int score_bits = 16;
     float score_shift = 0.f;
@@ -55,7 +61,6 @@ cudaError_t NMSImpl(cudaStream_t stream, int32_t const max_threads_per_block, co
     bool is_normalized = false;
     bool flip_XY = false;
     bool caffe_semantics = false;
-    int top_k = 4096;
     statue = allClassNMS<T, T>(stream, batch_size, num_classes, num_priors, top_k, iou_threshold, share_location,
                                is_normalized, const_cast<void*>(boxes_data), const_cast<void*>(scores_data), indices,
                                post_NMS_scores, post_NMS_indices, flip_XY, score_shift, caffe_semantics);
@@ -63,14 +68,14 @@ cudaError_t NMSImpl(cudaStream_t stream, int32_t const max_threads_per_block, co
 
     // Sort the bounding boxes after NMS using scores
     statue = sortScoresPerImage<T>(stream, batch_size, num_classes * top_k, post_NMS_scores, post_NMS_indices,
-                                   const_cast<void*>(scores_data), indices, sorting_workspace, score_bits);
+                                   post_sort_scores, post_sort_indices, sorting_workspace, score_bits);
     PLUGIN_ASSERT(statue == cudaSuccess);
 
     // Gather data from the sorted bounding boxes after NMS
     bool clip_boxes = false;
     statue = gatherNMSOutputs<T, T>(stream, share_location, batch_size, num_priors, num_classes, top_k, keep_topk,
-                                    indices, scores_data, boxes_data, keep_count, nmsed_boxes, nmsed_scores,
-                                    nmsed_classes, clip_boxes, score_shift);
+                                    post_sort_indices, post_sort_scores, boxes_data, keep_count, nmsed_boxes,
+                                    nmsed_scores, nmsed_classes, clip_boxes, score_shift);
     PLUGIN_ASSERT(statue == cudaSuccess);
 
     return cudaGetLastError();

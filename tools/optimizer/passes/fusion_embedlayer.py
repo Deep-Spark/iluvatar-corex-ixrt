@@ -805,3 +805,274 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
                     self.nodes_to_remove.extend([node])
                     embed_node.input.append(mask_input_name)
                     embed_node.output[1] = mask_index
+
+
+class FusionBertEmbedLayerNormalization(Fusion):
+    """
+    Fuse BertEmbedLayerNormalization subgraph into one node.
+    """
+
+    def __init__(self, model: OnnxModel):
+        super().__init__(
+            model, "CustomEmbLayerNormPluginDynamic_IxRT", "CustomQKVToContextPluginDynamic_IxRT"
+        )
+
+    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+        """
+        input -->  CustomEmbLayerNormPluginDynamic_IxRT --> CustomFCPluginDynamic_IxRT -->  CustomQKVToContextPluginDynamic_IxRT  --> CustomFCPluginDynamic_IxRT
+        """
+        children = self.model.get_children(node, input_name_to_nodes)
+        parent = self.model.get_parents(node, output_name_to_node)
+        
+        if len(children) == 0:
+            return
+        if len(parent) == 0:
+            return
+
+        start_node = node
+               
+        # word_embeddings
+        word_embeddings_node = self.model.match_parent_path(
+            start_node,
+            ["CustomFCPluginDynamic_IxRT", "LayerNormalization", "Add", "Add", "Gather"],
+            [0, 0, 0, 0, 0],
+            output_name_to_node,
+        )
+
+        # token_type_embeddings
+        token_type_embeddings_node = self.model.match_parent_path(
+            start_node,
+            ["CustomFCPluginDynamic_IxRT", "LayerNormalization", "Add", "Add", "Gather"],
+            [0, 0, 0, 0, 1],
+            output_name_to_node,
+        )
+        
+        # attention_mask
+        attention_mask_node = self.model.match_parent_path(
+            start_node,
+            ["Mul", "Sub", "Cast", "Unsqueeze"],
+            [1, 0, 1, 0],
+            output_name_to_node,
+        )
+        
+        if word_embeddings_node is None or token_type_embeddings_node is None or attention_mask_node is None:
+            return
+        
+        if word_embeddings_node and token_type_embeddings_node and attention_mask_node:
+            subgraph_nodes = []
+            subgraph_nodes.extend(word_embeddings_node)
+            subgraph_nodes.extend(token_type_embeddings_node)
+            subgraph_nodes.extend(attention_mask_node)
+            
+            subgraph_nodes_unique = []
+            for item in subgraph_nodes:
+                if item not in subgraph_nodes_unique:
+                    subgraph_nodes_unique.append(item)
+            subgraph_nodes_remove = []
+            for item in subgraph_nodes_unique:
+                if item.op_type != "CustomFCPluginDynamic_IxRT":
+                    subgraph_nodes_remove.append(item)
+    
+        # input_ids = self.model.get_graph_inputs_excluding_initializers()[0]
+        # token_type_ids = self.model.get_graph_inputs_excluding_initializers()[1]
+        # attention_mask = self.model.get_graph_inputs_excluding_initializers()[2]
+        
+        emblayernorm_out = word_embeddings_node[1].output[0]
+        emblayernorm_out_mask = attention_mask_node[0].output[0]
+        
+        # self.model.modify_node_output_type(emblayernorm_out_mask, 5)
+    
+        beta_data = self.model.get_initializer(word_embeddings_node[1].input[2], True)
+        embeddings_layernorm_beta_name = "bert_embeddings_layernorm_beta"
+        embeddings_layernorm_beta = helper.make_tensor(
+            embeddings_layernorm_beta_name, TensorProto.FLOAT, beta_data.shape, beta_data.flatten().tolist())
+        
+        gamma_data = self.model.get_initializer(word_embeddings_node[1].input[1], True)
+        embeddings_layernorm_gamma_name = "bert_embeddings_layernorm_gamma"
+        embeddings_layernorm_gamma = helper.make_tensor(
+            embeddings_layernorm_gamma_name, TensorProto.FLOAT, gamma_data.shape, gamma_data.flatten().tolist())
+        
+        embeddings_word_embeddings_data = self.model.get_initializer(word_embeddings_node[4].input[0], True)
+        embeddings_word_embeddings_name = "bert_embeddings_word_embeddings"
+        embeddings_word_embeddings = helper.make_tensor(
+            embeddings_word_embeddings_name, TensorProto.FLOAT, embeddings_word_embeddings_data.shape, 
+            embeddings_word_embeddings_data.flatten().tolist())
+        
+        embeddings_token_type_embeddings_data = self.model.get_initializer(token_type_embeddings_node[4].input[0], True)
+        embeddings_token_type_embeddings_name = "bert_embeddings_token_type_embeddings"
+        embeddings_token_type_embeddings = helper.make_tensor(
+            embeddings_token_type_embeddings_name, TensorProto.FLOAT, embeddings_token_type_embeddings_data.shape, 
+            embeddings_token_type_embeddings_data.flatten().tolist())
+        
+        embeddings_position_embeddings_data = self.model.get_initializer(token_type_embeddings_node[2].input[1], True)
+        embeddings_position_embeddings_name = "bert_embeddings_token_type_embeddings"
+        embeddings_position_embeddings = helper.make_tensor(
+            embeddings_position_embeddings_name, TensorProto.FLOAT, embeddings_position_embeddings_data.shape, 
+            embeddings_position_embeddings_data.flatten().tolist())
+        
+        self.model.add_initializer(embeddings_layernorm_beta, self.this_graph_name)
+        self.model.add_initializer(embeddings_layernorm_gamma, self.this_graph_name)
+        self.model.add_initializer(embeddings_word_embeddings, self.this_graph_name)
+        self.model.add_initializer(embeddings_token_type_embeddings, self.this_graph_name)
+        self.model.add_initializer(embeddings_position_embeddings, self.this_graph_name)
+        
+
+        emblayernorm_node = helper.make_node(
+            "CustomEmbLayerNormPluginDynamic_IxRT",
+            inputs=[word_embeddings_node[4].input[1], token_type_embeddings_node[4].input[1], attention_mask_node[3].input[0]],
+            outputs=[emblayernorm_out, emblayernorm_out_mask],
+            name=self.model.create_node_name(
+                "BertEmbedLayerNormalization", name_prefix="BertEmbedLayerNormalization"
+            ),
+        )
+        emblayernorm_node.domain = "com.iluvatar"
+        emblayernorm_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
+        emblayernorm_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
+        emblayernorm_node.attribute.extend([helper.make_attribute("output_fp16", 1)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("full_mask", 1)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("mha_type_id", 2)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("pad_id", 0)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_layernorm_beta", embeddings_layernorm_beta)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_layernorm_gamma", embeddings_layernorm_gamma)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_word_embeddings", embeddings_word_embeddings)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_token_type_embeddings", embeddings_token_type_embeddings)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_position_embeddings", embeddings_position_embeddings)])
+        
+        self.nodes_to_remove.extend(subgraph_nodes_remove)
+        
+        self.nodes_to_add.append(emblayernorm_node)
+        self.node_name_to_graph_name[emblayernorm_node.name] = self.this_graph_name
+
+
+class FusionAlbertEmbedLayerNormalization(Fusion):
+    """
+    Fuse AlbertEmbedLayerNormalization subgraph into one node.
+    """
+
+    def __init__(self, model: OnnxModel):
+        super().__init__(
+            model, "CustomEmbLayerNormPluginDynamic_IxRT", "CustomQKVToContextPluginDynamic_IxRT"
+        )
+
+    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+        """
+        input -->  CustomEmbLayerNormPluginDynamic_IxRT --> CustomFCPluginDynamic_IxRT -->  CustomFCPluginDynamic_IxRT --> CustomQKVToContextPluginDynamic_IxRT  --> CustomFCPluginDynamic_IxRT
+        """
+        children = self.model.get_children(node, input_name_to_nodes)
+        parent = self.model.get_parents(node, output_name_to_node)
+        
+        if len(children) == 0:
+            return
+        if len(parent) == 0:
+            return
+
+        start_node = node
+               
+        # word_embeddings
+        word_embeddings_node = self.model.match_parent_path(
+            start_node,
+            ["CustomFCPluginDynamic_IxRT","CustomFCPluginDynamic_IxRT", "LayerNormalization", "Add", "Add", "Gather"],
+            [0, 0, 0, 0, 0, 0],
+            output_name_to_node,
+        )
+
+        # token_type_embeddings
+        token_type_embeddings_node = self.model.match_parent_path(
+            start_node,
+            ["CustomFCPluginDynamic_IxRT","CustomFCPluginDynamic_IxRT", "LayerNormalization", "Add", "Add", "Gather"],
+            [0, 0, 0, 0, 0, 1],
+            output_name_to_node,
+        )
+        
+        # attention_mask
+        attention_mask_node = self.model.match_parent_path(
+            start_node,
+            ["Mul", "Sub", "Cast", "Unsqueeze"],
+            [1, 0, 1, 0],
+            output_name_to_node,
+        )
+        
+        if word_embeddings_node is None or token_type_embeddings_node is None or attention_mask_node is None:
+            return
+        
+        if word_embeddings_node and token_type_embeddings_node and attention_mask_node:
+            subgraph_nodes = []
+            subgraph_nodes.extend(word_embeddings_node)
+            subgraph_nodes.extend(token_type_embeddings_node)
+            subgraph_nodes.extend(attention_mask_node)
+            
+            subgraph_nodes_unique = []
+            for item in subgraph_nodes:
+                if item not in subgraph_nodes_unique:
+                    subgraph_nodes_unique.append(item)
+            subgraph_nodes_remove = []
+            for item in subgraph_nodes_unique:
+                if item.op_type != "CustomFCPluginDynamic_IxRT":
+                    subgraph_nodes_remove.append(item)
+        
+        # input_ids = self.model.get_graph_inputs_excluding_initializers()[0]
+        # token_type_ids = self.model.get_graph_inputs_excluding_initializers()[1]
+        # attention_mask = self.model.get_graph_inputs_excluding_initializers()[2]
+        
+        emblayernorm_out = word_embeddings_node[2].output[0]
+        emblayernorm_out_mask = attention_mask_node[0].output[0]
+        
+        beta_data = self.model.get_initializer(word_embeddings_node[2].input[2], True)
+        embeddings_layernorm_beta_name = "bert_embeddings_layernorm_beta"
+        embeddings_layernorm_beta = helper.make_tensor(
+            embeddings_layernorm_beta_name, TensorProto.FLOAT, beta_data.shape, beta_data.flatten().tolist())
+        
+        gamma_data = self.model.get_initializer(word_embeddings_node[2].input[1], True)
+        embeddings_layernorm_gamma_name = "bert_embeddings_layernorm_gamma"
+        embeddings_layernorm_gamma = helper.make_tensor(
+            embeddings_layernorm_gamma_name, TensorProto.FLOAT, gamma_data.shape, gamma_data.flatten().tolist())
+        
+        embeddings_word_embeddings_data = self.model.get_initializer(word_embeddings_node[5].input[0], True)
+        embeddings_word_embeddings_name = "bert_embeddings_word_embeddings"
+        embeddings_word_embeddings = helper.make_tensor(
+            embeddings_word_embeddings_name, TensorProto.FLOAT, embeddings_word_embeddings_data.shape, 
+            embeddings_word_embeddings_data.flatten().tolist())
+        
+        embeddings_token_type_embeddings_data = self.model.get_initializer(token_type_embeddings_node[5].input[0], True)
+        embeddings_token_type_embeddings_name = "bert_embeddings_token_type_embeddings"
+        embeddings_token_type_embeddings = helper.make_tensor(
+            embeddings_token_type_embeddings_name, TensorProto.FLOAT, embeddings_token_type_embeddings_data.shape, 
+            embeddings_token_type_embeddings_data.flatten().tolist())
+        
+        embeddings_position_embeddings_data = self.model.get_initializer(token_type_embeddings_node[3].input[1], True)
+        embeddings_position_embeddings_name = "bert_embeddings_token_type_embeddings"
+        embeddings_position_embeddings = helper.make_tensor(
+            embeddings_position_embeddings_name, TensorProto.FLOAT, embeddings_position_embeddings_data.shape, 
+            embeddings_position_embeddings_data.flatten().tolist())
+        
+        self.model.add_initializer(embeddings_layernorm_beta, self.this_graph_name)
+        self.model.add_initializer(embeddings_layernorm_gamma, self.this_graph_name)
+        self.model.add_initializer(embeddings_word_embeddings, self.this_graph_name)
+        self.model.add_initializer(embeddings_token_type_embeddings, self.this_graph_name)
+        self.model.add_initializer(embeddings_position_embeddings, self.this_graph_name)
+        
+        emblayernorm_node = helper.make_node(
+            "CustomEmbLayerNormPluginDynamic_IxRT",
+            inputs=[word_embeddings_node[5].input[1], token_type_embeddings_node[5].input[1], attention_mask_node[3].input[0]],
+            outputs=[emblayernorm_out, emblayernorm_out_mask],
+            name=self.model.create_node_name(
+                "BertEmbedLayerNormalization", name_prefix="BertEmbedLayerNormalization"
+            ),
+        )
+        emblayernorm_node.domain = "com.iluvatar"
+        emblayernorm_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
+        emblayernorm_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
+        emblayernorm_node.attribute.extend([helper.make_attribute("output_fp16", 1)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("full_mask", 1)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("mha_type_id", 2)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("pad_id", 0)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_layernorm_beta", embeddings_layernorm_beta)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_layernorm_gamma", embeddings_layernorm_gamma)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_word_embeddings", embeddings_word_embeddings)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_token_type_embeddings", embeddings_token_type_embeddings)])
+        emblayernorm_node.attribute.extend([helper.make_attribute("bert_embeddings_position_embeddings", embeddings_position_embeddings)])
+        
+        self.nodes_to_remove.extend(subgraph_nodes_remove)
+        
+        self.nodes_to_add.append(emblayernorm_node)
+        self.node_name_to_graph_name[emblayernorm_node.name] = self.this_graph_name
