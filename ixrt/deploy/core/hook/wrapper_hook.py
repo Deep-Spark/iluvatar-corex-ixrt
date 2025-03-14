@@ -28,8 +28,12 @@ class WrapperHook(ReplaceableEventHook):
         super(WrapperHook, self).__init__()
 
     def replace_hook_events(self, hook):
-        from ixrt.deploy.ir import ExecutorHook
-        if inspect.isclass(hook) or isinstance(hook, BaseHook) or isinstance(hook, ExecutorHook):
+        def issubclass_of(cls, base):
+            for i in cls.__mro__:
+                if base in str(i):
+                    return True
+            return False
+        if inspect.isclass(type(hook)) and issubclass_of(type(hook), "BaseHook"):
             funcs = get_obj_funcs(hook).keys()
         elif isinstance(hook, list):
             funcs = hook

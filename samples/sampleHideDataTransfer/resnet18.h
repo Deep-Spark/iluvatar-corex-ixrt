@@ -98,4 +98,5 @@ class Resnet18 {
     std::mutex input_queue_mtx_;
     std::atomic<bool> input_queue_flag_;
     std::condition_variable input_queue_cv_;
+    Logger logger_;
 };

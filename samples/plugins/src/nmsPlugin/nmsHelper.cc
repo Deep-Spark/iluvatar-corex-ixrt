@@ -25,13 +25,15 @@
 template <typename T_SCORE>
 size_t detectionInferenceWorkspaceSize(bool shareLocation, int N, int C1, int C2, int numClasses, int numPredsPerClass,
                                        int topK) {
-    size_t wss[4];
+    size_t wss[6];
     wss[0] = detectionForwardPreNMSSize<int>(N, C2);
     wss[1] = detectionForwardPostNMSSize<T_SCORE>(N, numClasses, topK);
     wss[2] = detectionForwardPostNMSSize<int>(N, numClasses, topK);
-    wss[3] = std::max(sortScoresPerClassWorkspaceSize<T_SCORE>(N, numClasses, numPredsPerClass),
+    wss[3] = detectionForwardPostNMSSize<T_SCORE>(N, numClasses, topK);
+    wss[4] = detectionForwardPostNMSSize<int>(N, numClasses, topK);
+    wss[5] = std::max(sortScoresPerClassWorkspaceSize<T_SCORE>(N, numClasses, numPredsPerClass),
                       sortScoresPerImageWorkspaceSize<T_SCORE>(N, numClasses * topK));
-    return calculateTotalWorkspaceSize(wss, 4);
+    return calculateTotalWorkspaceSize(wss, 6);
 }
 
 #define INSTANTIATED_DETECTIONINFERENCEWSSIZE(T)                                                                  \

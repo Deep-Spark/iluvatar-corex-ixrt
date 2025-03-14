@@ -103,6 +103,7 @@ def quantize_cls_model(args, model_name, model, dataloader):
         create_source(
             model,
             example_inputs=test_inputs,
+            rename_edges = args.rename_edges
         ),
         ToDevice(device=device),
         compute_model_acc(
@@ -148,6 +149,7 @@ def parse_args():
     parser.add_argument("--train_dir", type=str, help="Training dataset dir.")
     parser.add_argument("--epoch", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--rename_edges", type=bool, default=False)
     args = parser.parse_args()
 
     args.use_ixquant = not args.use_ixrt

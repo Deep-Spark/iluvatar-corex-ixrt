@@ -31,12 +31,10 @@ using std::endl;
 
 Resnet18::Resnet18(const std::string& model_path, std::string& quant_file, std::string& input_name,
                    std::string& output_name)
-    : input_queue_(1) {
+    : input_queue_(1),logger_(nvinfer1::ILogger::Severity::kWARNING) {
     cout << "call Resnet18 construct" << endl;
     input_queue_flag_.store(false);
-
-    Logger logger(nvinfer1::ILogger::Severity::kWARNING);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger_));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         return;
@@ -65,14 +63,14 @@ Resnet18::Resnet18(const std::string& model_path, std::string& quant_file, std::
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger_));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         return;
     } else {
         cout << "Create config success" << endl;
     }
-    auto parsed = parser->parseFromFile(model_path.c_str(), static_cast<int>(logger.getReportableSeverity()));
+    auto parsed = parser->parseFromFile(model_path.c_str(), static_cast<int>(logger_.getReportableSeverity()));
     if (!parsed) {
         std::cout << "Create onnx parser failed" << std::endl;
         return;
@@ -111,7 +109,7 @@ Resnet18::Resnet18(const std::string& model_path, std::string& quant_file, std::
     // Option operation, not necessary
     // WriteBuffer2Disk("/home/work/trt.engine", plan->data(), plan->size());
 
-    runtime_.reset(nvinfer1::createInferRuntime(logger));
+    runtime_.reset(nvinfer1::createInferRuntime(logger_));
 
     if (not runtime_) {
         std::cout << "Create runtime failed" << std::endl;

@@ -149,14 +149,15 @@ size_t NMS::getWorkspaceSize(PluginTensorDesc const* inputs, int32_t nbInputs, P
     auto type = inputs[0].type;
     PLUGIN_ASSERT(type == DataType::kHALF || type == DataType::kFLOAT);
 
+    int top_k = 2048;
     switch (type) {
         case DataType::kFLOAT: {
             return detectionInferenceWorkspaceSize<float>(mParams.share_location, batch_size, boxes_size, scores_size,
-                                                          num_classes, num_priors, num_priors);
+                                                          num_classes, num_priors, top_k);
         } break;
         case DataType::kHALF: {
             return detectionInferenceWorkspaceSize<__half>(mParams.share_location, batch_size, boxes_size, scores_size,
-                                                           num_classes, num_priors, num_priors);
+                                                           num_classes, num_priors, top_k);
         } break;
         default:
             return -1;

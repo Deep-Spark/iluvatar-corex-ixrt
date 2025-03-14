@@ -421,12 +421,12 @@ def load_plugins(logger, exec_config):
 
 def main():
     exec_config = args_parser()
+    IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
+    load_plugins(IXRT_LOGGER, exec_config)
     if exec_config.run_profiler:
         os.environ["IXRT_USE_PROFILER"] = "1"
     process_supported_ops_info(exec_config.support)
     serialized_network = create_engine(exec_config)
-    IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
-    load_plugins(IXRT_LOGGER, exec_config)
     runtime = ixrt.Runtime(IXRT_LOGGER)
     engine = runtime.deserialize_cuda_engine(serialized_network)
     assert engine
@@ -513,7 +513,7 @@ def main():
         name = engine.get_binding_name(i)
         dtype = engine.get_binding_dtype(i)
         shape = context.get_binding_shape(i)
-        if bsz is None and engine.binding_is_input(i):
+        if bsz is None or engine.binding_is_input(i):
             bsz = shape[0]
         size = np.dtype(ixrt.nptype(dtype)).itemsize
         for s in shape:
@@ -569,7 +569,7 @@ def main():
     end_time = time.time()
     for output_binding in output_bindings:
         binding_name = output_binding["name"]
-        size = input_binding["nbytes"]
+        size = output_binding["nbytes"]
         (err,) = cudart.cudaMemcpy(
             output_buffers[binding_name],
             output_binding["dptr"],
