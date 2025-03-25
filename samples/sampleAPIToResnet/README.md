@@ -9,7 +9,7 @@ Please refer to official documentation to install IxRT library.
 ## Gen Model Weight File
 
 ```bash
-cd path-to-sampleAPIToResnet
+cd samples/sampleAPIToResnet
 python3 gen_wts.py
 ```
 
@@ -18,10 +18,11 @@ python3 gen_wts.py
 ### Compile the samples in IxRT OSS directory
 
 If you haven't compiled the IxRT samples, following command helps you compile all samples.
+Refer to the README section of ixrt-oss.
 
 ```
-cd path-to-ixrt-oss
-cmake -B build
+cd ixrt-oss
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 
