@@ -9,7 +9,7 @@ Please refer to official documentation to install IxRT library.
 ## Download the quantization dataset.
 
 ```bash
-cd path-to-sampleQuant
+cd samples/ampleQuant
 bash prepare.sh
 ```
 
@@ -18,10 +18,11 @@ bash prepare.sh
 ### Compile the samples in IxRT OSS directory
 
 If you haven't compiled the IxRT samples, following command helps you compile all samples.
+Refer to the README section of ixrt-oss.
 
 ```
-cd path-to-ixrt-oss
-cmake -B build
+cd ixrt-oss
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 

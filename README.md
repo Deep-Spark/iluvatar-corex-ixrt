@@ -8,13 +8,13 @@ Directory structure:
 
 ```bash
 .
-├── CMakeLists.txt # To build samples
-├── README.md # This readme
 ├── cmake # Various cmake scripts
+├── ixrt # IxRT Python code, include its deploy tool
 ├── requirements # Python requirements
 ├── samples # IxRT samples
-├── ixrt # IxRT Python code, include its deploy tool
-└── tools # IxRT various tools, please check readme for details
+├── tools # IxRT various tools, please check readme for details
+├── CMakeLists.txt # To build samples
+├── README.md # This readme
 ```
 
 ## Prebuilt IxRT Python Package
@@ -39,15 +39,17 @@ pip3 install -r requirements-quant-tests.txt
 pip3 install -r requirements-quant.txt
 ```
 
-To build IxRT C++ samples, you will also need to download IxRT `.run` or `.tar.gz` software package from Iluvatar official website, and install it following procedures in **Install** chapter of IxRT documentation.
-
 ### Building IxRT-OSS
 
 #### Generate Makefiles and build
 
+To build IxRT C++ samples, you will also need to download IxRT `.run` or `.tar.gz` software package from Iluvatar official website, and install it following procedures in **Install** chapter of IxRT documentation.
+
 ```bash
-cd /path/to/ixrt-oss
-cmake -B build
+cd ixrt-oss
+wget ixrt-0.9.x+corex.x.x.x-linux_x86_64.tar.gz
+tar -xzvf ixrt-0.9.x+corex.x.x.x-linux_x86_64.tar.gz
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 

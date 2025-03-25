@@ -16,7 +16,7 @@ The official documentation describes how to export a pytorch model as an onnx mo
 Quantify and export QDQ-ONNX, which can be loaded and deployed by ixrt.
 
 ```bash
-cd path-to-sampleYoloX
+cd samples/sampleYoloX
 DATADIR=$(realpath ../../data/yolox_m)
 python3 yolox_qdq.py --model ${DATADIR}/yolox_m.onnx --calib_path ${DATADIR} --save_model_path ${DATADIR}/yolox_m_qdq_quant.onnx
 ```
@@ -26,7 +26,7 @@ python3 yolox_qdq.py --model ${DATADIR}/yolox_m.onnx --calib_path ${DATADIR} --s
 Append implemented decoders and nms plugins.
 
 ```bash
-cd path-to-sampleYoloX
+cd samples/sampleYoloX
 DATADIR=$(realpath ../../data/yolox_m)
 # float16
 python3 create_onnx.py --src ${DATADIR}/yolox_m.onnx --dest ${DATADIR}/yolox_m_with_decoder_nms.onnx
@@ -38,11 +38,12 @@ python3 create_onnx.py --src ${DATADIR}/yolox_m_qdq_quant.onnx --dest ${DATADIR}
 
 ### Compile the samples in IxRT OSS directory
 
-If you haven't compiled the IxRT samples, following command helps you compile all samples
+If you haven't compiled the IxRT samples, following command helps you compile all samples.
+Refer to the README section of ixrt-oss.
 
 ```
-cd path-to-ixrt-oss
-cmake -B build
+cd ixrt-oss
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 

@@ -30,10 +30,13 @@ Arguments:
 - `--dynamic`, if specified, use dynamic shape for H/W of the YoloV3 input
 
 2. Compile the samples in IxRT OSS directory
-If you haven't compiled the IxRT samples, following command helps you compile all samples
+
+If you haven't compiled the IxRT samples, following command helps you compile all samples.
+Refer to the README section of ixrt-oss.
+
 ```
-cd path-to-ixrt-oss
-cmake -B build
+cd ixrt-oss
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 
