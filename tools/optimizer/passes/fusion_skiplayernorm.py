@@ -111,7 +111,7 @@ class FusionSkipLayerNormalization(Fusion):
             if self.shape_infer_helper is not None:
                 hidden_size = self.shape_infer_helper.get_edge_shape(node.input[1])[-1]
             normalize_node.attribute.extend([helper.make_attribute("ld", hidden_size)])
-            normalize_node.attribute.extend([helper.make_attribute("type_id", 2)])
+            normalize_node.attribute.extend([helper.make_attribute("type_id", 1)])
             normalize_node.attribute.extend(
                 [
                     helper.make_attribute(
@@ -207,7 +207,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
         new_node.domain = "com.iluvatar"
         hidden_size = self.shape_infer_helper.get_edge_shape(node.input[2])[-1]
         new_node.attribute.extend([helper.make_attribute("ld", hidden_size)])
-        new_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        new_node.attribute.extend([helper.make_attribute("type_id", 1)])
         new_node.attribute.extend(
             [helper.make_attribute("beta", self.model.get_initializer(node.input[3]))]
         )

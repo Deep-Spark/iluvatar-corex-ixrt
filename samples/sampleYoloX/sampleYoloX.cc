@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include <dlfcn.h>
 #include <sys/types.h>
 
@@ -33,15 +32,14 @@
 #include "NvInferRuntimeCommon.h"
 #include "NvOnnxParser.h"
 #include "coco_labels.h"
-#include "data_utils.h"
 #include "image_io.h"
 #include "logging.h"
 #include "memory_utils.h"
 #include "misc.h"
-
 using namespace std;
-using namespace nvinfer1;
 
+namespace nvinfer1::samples {
+using namespace common;
 void WriteBuffer2Disk(const std::string& file_path, void* data, uint64_t len) {
     std::ofstream outFile(file_path, std::ios::binary);
     outFile.write((char*)data, len);
@@ -73,7 +71,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
                                         output_detection_classes};
 
     Logger logger(nvinfer1::ILogger::Severity::kWARNING);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         return;
@@ -86,7 +84,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         return;
@@ -94,7 +92,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -106,7 +104,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
     } else {
         config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -144,7 +142,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
         cout << endl;
     }
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         return;
@@ -155,7 +153,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
     // Option operation, not necessary
     WriteBuffer2Disk(engine_path, plan->data(), plan->size());
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         return;
@@ -226,7 +224,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
     }
     cout << "User input date prepare done" << endl;
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -277,6 +275,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
     for (void* ptr : warmup_io_buffers_gpu) cudaFree(ptr);
     cout << "Yolox with IxRT API demo for enqueue done" << endl;
 }
+}  // namespace nvinfer1::samples
 
 int main(int argc, char* argv[]) {
     CLI::App app{"App description"};
@@ -315,7 +314,7 @@ int main(int argc, char* argv[]) {
         throw "No such type called " + mode + ", available: (without_qdq/with_qdq)";
     }
     if (demo == "trt_exec") {
-        YoloXOnnxTRTAPIExec(onnx_path, quant_param_path, engine_path, image_path, with_qdq);
+        nvinfer1::samples::YoloXOnnxTRTAPIExec(onnx_path, quant_param_path, engine_path, image_path, with_qdq);
     } else {
         throw "No such demo called " + demo + ", available: (old/trt_exec)";
     }

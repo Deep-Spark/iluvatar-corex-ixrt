@@ -47,8 +47,8 @@ To build IxRT C++ samples, you will also need to download IxRT `.run` or `.tar.g
 
 ```bash
 cd ixrt-oss
-wget ixrt-0.9.x+corex.x.x.x-linux_x86_64.tar.gz
-tar -xzvf ixrt-0.9.x+corex.x.x.x-linux_x86_64.tar.gz
+wget ixrt-<version>+corex.x.x.x-linux_x86_64.tar.gz
+tar -xzvf ixrt-<version>+corex.x.x.x-linux_x86_64.tar.gz
 cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```

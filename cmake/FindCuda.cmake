@@ -31,6 +31,7 @@ else()
       CACHE PATH "cuda installation root path")
 endif()
 message(STATUS "Use CUDA_PATH=${CUDA_PATH} ")
+link_directories(${CUDA_PATH}/lib)
 
 macro(cuda_add_executable)
   foreach(File ${ARGN})
@@ -56,6 +57,7 @@ find_library(
   PATH_SUFFIXES lib/x64 lib64 lib
   NO_DEFAULT_PATH)
 
+message(STATUS "CUDART_LIBRARY: ${CUDART_LIBRARY}")
 if (NOT USE_TRT)
   set(CUDA_LIBRARIES cudart)
 endif()

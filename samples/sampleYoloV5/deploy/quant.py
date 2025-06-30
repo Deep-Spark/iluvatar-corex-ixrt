@@ -22,8 +22,9 @@ from random import shuffle
 import cv2
 import numpy as np
 import torch
-from ixrt.deploy import static_quantize
 from torch.utils.data import DataLoader
+
+from ixrt.deploy import static_quantize
 
 
 def setseed(seed=42):

@@ -88,7 +88,7 @@ class FusionConformerXSoftmax(Fusion):
         xsoftmax_node.domain = "com.iluvatar"
         xsoftmax_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
         xsoftmax_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
-        xsoftmax_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        xsoftmax_node.attribute.extend([helper.make_attribute("type_id", 1)])
         xsoftmax_node.attribute.extend([helper.make_attribute("dim", -1)])
         xsoftmax_node.attribute.extend([helper.make_attribute("is_conformer", 1)])
 

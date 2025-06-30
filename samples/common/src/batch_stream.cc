@@ -14,9 +14,6 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
-
 #include "batch_stream.h"
 
 #include <dirent.h>
@@ -28,7 +25,7 @@
 
 #include "image_io.h"
 
-namespace SampleHelper {
+namespace nvinfer1::samples::common {
 
 static bool LoadFilePathsStack(std::string root_path, std::vector<std::string>& file_paths, bool subContain = true) {
     DIR* pDir = nullptr;
@@ -154,4 +151,4 @@ void BatchStream::skip(int skipCount) {
     mBatchCount = skipCount;
 }
 
-}  // end of namespace SampleHelper
+}  // end of namespace nvinfer1::samples::common

@@ -26,6 +26,7 @@ import numpy as np
 import onnx
 import torch
 from onnxsim import simplify
+
 from ixrt.deploy.api import static_quantize
 
 

@@ -28,14 +28,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 import json
 import struct
 
 import numpy as np
 import onnx
-import ixrt
 import torch
+
+import ixrt
 
 TRT_LOGGER = ixrt.Logger(ixrt.Logger.INFO)
 

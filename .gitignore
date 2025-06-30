@@ -2,8 +2,6 @@
 .cache
 build
 data
-.gitignore
-.git/
 reference/tmp
 *.so
 __pycache__

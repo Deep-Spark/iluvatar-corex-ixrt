@@ -33,8 +33,9 @@ import json
 import struct
 
 import numpy as np
-import ixrt
 import torch
+
+import ixrt
 
 TRT_LOGGER = ixrt.Logger(ixrt.Logger.INFO)
 

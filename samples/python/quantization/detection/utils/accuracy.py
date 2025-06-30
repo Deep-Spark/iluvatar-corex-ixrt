@@ -21,9 +21,10 @@ import numpy as np
 import torch
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
-from ixrt.deploy.api import *
 from torch import nn
 from tqdm import tqdm
+
+from ixrt.deploy.api import *
 
 from .coco_common import *
 

@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include <cuda_runtime_api.h>
 
 #include "PluginCheckMacros.h"

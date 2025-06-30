@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include <dlfcn.h>
 
 #include <fstream>
@@ -35,14 +34,8 @@
 #include "postprocess_utils.h"
 
 using namespace std;
-using namespace nvinfer1;
-
-void writeFile(const float* data_ptr, int32_t data_size, std::string& file_path) {
-    ofstream f(file_path, ios::app);
-    for (int32_t i = 0; i < data_size; i++) {
-        f << data_ptr[i] << " ";
-    }
-}
+namespace nvinfer1::samples {
+using namespace common;
 
 void WriteBuffer2Disk(const std::string& file_path, void* data, uint64_t len) {
     std::ofstream outFile(file_path, std::ios::binary);
@@ -55,7 +48,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     std::string input_name("images");
     std::vector<string> output_names = {"output"};
     Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         return;
@@ -78,7 +71,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         return;
@@ -86,7 +79,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -99,7 +92,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     else
         config->setFlag(nvinfer1::BuilderFlag::kFP16);
 
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -134,7 +127,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         return;
@@ -143,7 +136,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     }
     std::shared_ptr<nvinfer1::ICudaEngine> engine;
     std::vector<char> buffer;
-    UniquePtr<nvinfer1::IHostMemory> plan;
+    UPtr<nvinfer1::IHostMemory> plan;
     if (false) {
         std::ifstream input(engine_path, std::ios::ate | std::ios::binary);
         // get current position in file
@@ -157,7 +150,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
         engine = std::shared_ptr<nvinfer1::ICudaEngine>(runtime->deserializeCudaEngine(raw_plan->data(), plan->size()),
                                                         ObjectDeleter());
     } else {
-        plan = UniquePtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
+        plan = UPtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
         if (not plan) {
             std::cout << "Create serialized engine plan failed" << std::endl;
             return;
@@ -216,7 +209,7 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     }
     cout << "User input date prepare done" << endl;
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -247,12 +240,13 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
     }
     cout << "YoloV5 Inference API demo done" << endl;
 }
+}  // namespace nvinfer1::samples
 
 int main(int argc, char* argv[]) {
     std::string precision, datadir;
     std::string engine_path, onnx_path, quant_param_path = "";
 
-    Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
+    nvinfer1::samples::common::Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
     initLibNvInferPlugins(&logger, "");
 
     CLI::App app{"App description"};
@@ -273,6 +267,6 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     std::string image_path = datadir + "/dog_640.jpg";
-    InferenceYoloV5(precision, onnx_path, quant_param_path, image_path, engine_path);
+    nvinfer1::samples::InferenceYoloV5(precision, onnx_path, quant_param_path, image_path, engine_path);
     return 0;
 }

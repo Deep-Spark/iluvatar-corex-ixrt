@@ -47,7 +47,7 @@ class FusionOptions:
         self.enable_format_roformer = False
         self.enable_gpt2_classify = False
         self.enable_vit = False
-        self.enable_omdet = False
+        self.enable_omdet = True
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
         if model_type == "gpt2":

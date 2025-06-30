@@ -15,32 +15,9 @@
 #
 
 import inspect
-import onnx
+
 import torch
 from torch import nn
-
-
-def rename_model_edges(model_path):
-   
-    model = onnx.load(model_path)
-
-    for node in model.graph.node:
-     
-        for i, input_name in enumerate(node.input):
-            if '.' in input_name:
-                node.input[i] = input_name.replace('.', '_')
-
-        for i, output_name in enumerate(node.output):
-            if '.' in output_name:
-                node.output[i] = output_name.replace('.', '_')
-
-    for initializer in model.graph.initializer:
-        if '.' in initializer.name:
-            initializer.name = initializer.name.replace('.', '_')
-
-    new_model_path = model_path.replace('.onnx', '_renamed.onnx')
-    onnx.save(model, new_model_path)
-    return new_model_path
 
 
 def export(save_path, model: nn.Module, example_inputs, **kwargs):

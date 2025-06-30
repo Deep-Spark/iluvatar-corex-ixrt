@@ -14,15 +14,13 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <vector>
 
 #include "NvInfer.h"
 #include "buffer_utils.h"
 #include "data_utils.h"
-using namespace nvinfer1::samples::common;
+namespace nvinfer1::samples::common {
 struct Image {
     int32_t h;
     int32_t w;
@@ -54,3 +52,5 @@ std::shared_ptr<float> LoadNormalizeImageCPU(const std::string& file_name, const
                                              const std::vector<float>& std = std::vector<float>{0.229f, 0.224f,
                                                                                                 0.225f});
 void LoadImageBuffer(const std::string& file_name, const nvinfer1::Dims& dims, float* data, int32_t batch = 0);
+
+}  // namespace nvinfer1::samples::common

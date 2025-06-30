@@ -17,13 +17,14 @@
 import os
 
 import torch
-from ixrt.deploy.api import *
-from ixrt.deploy.utils.seed import manual_seed
 from torchvision import models
 from utils.accuracy import compute_model_acc
 from utils.argparser import create_argparser
 from utils.calibration import create_dataloader
 from utils.infer_ixrt import infer_by_ixrt, verify_quantized_model
+
+from ixrt.deploy.api import *
+from ixrt.deploy.utils.seed import manual_seed
 
 manual_seed(43)
 device = 0 if torch.cuda.is_available() else "cpu"

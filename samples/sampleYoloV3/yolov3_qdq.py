@@ -21,6 +21,7 @@ import sys
 from os.path import basename, dirname, join
 
 import torch
+
 from ixrt.deploy.api import static_quantize
 
 

@@ -30,13 +30,16 @@ __all__ = [
     "copy_ixrt_io_tensors_as_np",
 ]
 
+from ixrt import volume
+
+
 # quant
 def quant(arr, scale):
     if not scale:
         raise Exception("Tried to quant tensor but got empty scale")
     ndims = len(arr.shape)
     scale = np.array(scale).reshape(-1, *[1] * (ndims - 1))
-    arr = arr * scale
+    arr = arr / scale
     arr = arr.round()
     arr = np.clip(arr, -128, 127)
     return arr.astype(np.int8)
@@ -47,7 +50,7 @@ def dequant(arr, scale):
         raise Exception("Tried to dequant tensor but got empty scale")
     ndims = len(arr.shape)
     scale = np.array(scale).reshape(-1, *[1] * (ndims - 1))
-    return (arr / scale).astype(np.float32)
+    return (arr * scale).astype(np.float32)
 
 
 # padding
@@ -66,13 +69,33 @@ def add_padding(arr, ixrt_paddings):
     paddings = _to_double_paddings(ixrt_paddings)
     return np.pad(arr, paddings)
 
+def apply_format(shape, format):
+    if format == ixrt.TensorFormat.HWC and len(shape)>2:
+        return [shape[0], *shape[2:], shape[1]]
+    return shape
+def convert_shape_tensor(tensor):
+    import ctypes
+    pointer = None
+    if tensor.dtype == ixrt.DataType.INT64:
+        pointer = ctypes.c_int64 * volume(tensor.shape)
+    elif tensor.dtype == ixrt.DataType.INT32:
+        pointer = ctypes.c_int64 * volume(tensor.shape)
+    elif tensor.dtype == ixrt.DataType.FLOAT:
+        pointer = ctypes.c_float * volume(tensor.shape)
+    elif tensor.dtype == ixrt.DataType.BOOL:
+        pointer = ctypes.c_bool * volume(tensor.shape)
+    else:
+        raise Exception("Unsupported tensor dtype for", tensor.dtype)
 
-def copy_ixrt_tensor_as_np(tensor, ort_style=True):
-    np_array = np.zeros(tensor.shape, ixrt.nptype(tensor.dtype))
+    c_array = pointer.from_address(tensor.data)
+    return np.frombuffer(c_array, dtype=ixrt.nptype(tensor.dtype))
+
+def convert_execution_tensor(tensor, ort_style=True):
+    result = np.zeros(apply_format(tensor.shape, tensor.format), ixrt.nptype(tensor.dtype))
     (err,) = cudart.cudaMemcpy(
-        np_array,
+        result,
         tensor.data,
-        np_array.nbytes,
+        result.nbytes,
         cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost,
     )
     assert err == cudart.cudaError_t.cudaSuccess
@@ -81,21 +104,25 @@ def copy_ixrt_tensor_as_np(tensor, ort_style=True):
         # currently, we only have two rules:
         # int8 --> float32
         # float16 --> float32
-        if np_array.dtype == np.int8:
-            np_array = dequant(np_array, tensor.scale)
-        elif np_array.dtype == np.float16:
-            np_array = np_array.astype(np.float32)
-        # remove padding
-        np_array = remove_padding(np_array, tensor.paddings)
+        # if result.dtype == np.int8:
+        #     result = dequant(result, tensor.scale)
+        if result.dtype == np.float16:
+            result = result.astype(np.float32)
+
         # process tensor data format to be linear, which is consistent with ort
-        if tensor.format == ixrt.TensorFormat.HWC:
-            assert (len(tensor.shape) >= 3 or len(tensor.shape) == 1)
-            if len(tensor.shape) == 1:
-                np_array = np_array
-            else:
-                np_array = np_array.transpose(
-                0, np_array.ndim - 1, *range(1, np_array.ndim - 1))
-    return np_array
+        if tensor.format == ixrt.TensorFormat.HWC and len(tensor.shape) >= 3:
+            result = result.transpose(
+                0, result.ndim - 1, *range(1, result.ndim - 1)
+            )
+        # remove padding
+        result = remove_padding(result, tensor.paddings)
+    return result
+def copy_ixrt_tensor_as_np(tensor, ort_style=True):
+    if tensor.is_shape_tensor:
+        return convert_shape_tensor(tensor)
+    else:
+        return convert_execution_tensor(tensor, ort_style)
+
 
 
 def copy_ixrt_io_tensors_as_np(info, ort_style=True):

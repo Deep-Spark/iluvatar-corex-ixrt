@@ -27,13 +27,20 @@ from ..onnx.quant_parameter_serializer import pack_quant_params
 
 __all__ = ["IxrtQuantizedOnnxTarget"]
 
+def modify_opset(model, opset_version):
+    for opset in model.opset_import:
+        if opset.domain == "" or opset.domain == "ai.onnx":  # 默认的 ONNX opset
+            opset.version = opset_version
 
+    return model
 class IxrtQuantizedOnnxTarget(OnnxTarget):
     def export(self, graph: Graph):
         origin_saved_path = self.saved_path
         self.saved_path = None
 
         onnx_model = super().export(graph)
+        onnx_model = modify_opset(onnx_model, 13)
+
 
         if not hasattr(onnx_model.graph, "quantization_annotation"):
             raise RuntimeError(

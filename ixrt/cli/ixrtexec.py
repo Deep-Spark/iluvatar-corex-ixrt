@@ -35,17 +35,17 @@ from ixrt.cli.compare_result import IxrtLayerSaver, create_acc_comp_config
 from ixrt.cli.utils import (
     args_parser,
     check_cuda_errors,
-    generate_buffers,
+    generate_input_buffers,
+    generate_output_buffers,
     generate_quantified_model,
     get_cuda_error_enum,
     get_io_info,
     parse_custom_inputs,
     parse_inference_input_shapes,
-    process_supported_ops_info,
 )
-from ixrt.deploy.api import create_source
-from ixrt.hook import create_hook
 
+from ixrt.hook import create_hook
+import fcntl
 log_info_dict = {
     "verbose": ixrt.Logger.VERBOSE,
     "info": ixrt.Logger.INFO,
@@ -116,7 +116,7 @@ def create_serialized_network_by_build(exec_config):
         onnx_path = converted_model
 
     ixrt_input_shapes, is_dynamic_model, input_type_dict, _ = get_io_info(exec_config)
-    if exec_config.precision not in ["fp16", "int8"]:
+    if exec_config.precision not in ["fp16", "int8", "fp32"]:
         raise ValueError(f"unsupported precision {exec_config.precision}")
 
     import_quantified_qdq_model = False
@@ -127,6 +127,7 @@ def create_serialized_network_by_build(exec_config):
             raise ValueError(f" no such file path {exec_config.quant_file}")
 
     elif exec_config.precision == "int8":
+        from ixrt.deploy.api import create_source
         graph = create_source(onnx_path)()
         for op_name, op_val in graph.operators.items():
             if (
@@ -163,29 +164,33 @@ def create_serialized_network_by_build(exec_config):
             )
             restore_inputs_dimensions(onnx_path, internally_quantified_qdq_model)
         del graph
-        import torch
 
-        torch.cuda.empty_cache()
 
     IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
     builder = ixrt.Builder(IXRT_LOGGER)
     EXPLICIT_BATCH = 1 << (int)(ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     network = builder.create_network(EXPLICIT_BATCH)
     build_config = builder.create_builder_config()
+    timing_cache = create_timing_cache(build_config, exec_config.timingCacheFile)
+    if timing_cache:
+        build_config.set_timing_cache(timing_cache, False)
+    build_config.builder_optimization_level = exec_config.builderOptimizationLevel
+
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
 
+    parse_status = True
     if exec_config.precision == "int8":
         if import_quantified_qdq_model:
-            parser.parse_from_file(onnx_path)
+            parse_status = parser.parse_from_file(onnx_path)
         elif internally_quantified_qdq_model is not None:
-            parser.parse_from_file(internally_quantified_qdq_model)
+            parse_status = parser.parse_from_file(internally_quantified_qdq_model)
         else:
-            parser.parse_from_files(onnx_path, exec_config.quant_file)
+            parse_status = parser.parse_from_files(onnx_path, exec_config.quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
     elif exec_config.precision == "fp16":
-        parser.parse_from_file(onnx_path)
+        parse_status = parser.parse_from_file(onnx_path)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
-
+    assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()
     if is_dynamic_model:
         for name, desc in ixrt_input_shapes["dynamic_input"].items():
@@ -200,14 +205,17 @@ def create_serialized_network_by_build(exec_config):
     build_config.add_optimization_profile(opt_profile)
 
     plan = builder.build_serialized_network(network, build_config)
+    if os.path.exists(converted_model):
+        os.remove(converted_model)
+    save_timing_cache(build_config, exec_config.timingCacheFile)
     return plan
 
 
-def read_profiler_data():
+def read_profiler_data(profiler_context):
     lines = []
-    tmp_file_name = ".ixrt_profiler_tmp.dat"
-    with open(tmp_file_name) as f:
-        lines = f.readlines()
+    import io
+    buf = io.StringIO(profiler_context)
+    lines = buf.readlines()
 
     loops_num = int(lines[0])
     layers_num = int(lines[1])
@@ -233,8 +241,6 @@ def read_profiler_data():
     kernel_layer_ids = [int(id_.strip()) for id_ in kernel_layer_ids]
     kernel_times = [int(time.strip()) for time in kernel_times]
 
-    if os.path.exists(tmp_file_name):
-        os.remove(tmp_file_name)
     return [
         layer_names,
         layer_ids,
@@ -280,6 +286,8 @@ def export_profiler_data(exec_config, infos):
     kernel_layer_name = [""] * kernel_len
     kernel_datas = np.array(kernel_times).reshape((-1, kernel_len))
     for i, layer_id in enumerate(kernel_layer_ids):
+        if layer_id < 0:
+            continue
         kernel_name[i] = kernel_names[i].replace(",", ";")
         kernel_name_show[i] = (
             kernel_names[i]
@@ -404,6 +412,7 @@ def create_engine(exec_config):
             with open(exec_config.save_engine, "wb") as f:
                 f.write(serialized_network)
             f.close()
+
     return serialized_network
 
 
@@ -418,6 +427,38 @@ def load_plugins(logger, exec_config):
         CDLL(plugin_path)
         ixrt.init_libnvinfer_plugins(logger, "")
 
+def create_timing_cache(build_config, file_path):
+    if not file_path:
+        return None
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as file:
+            fcntl.flock(file.fileno(), fcntl.LOCK_SH)
+            try:
+                timing_cache = build_config.create_timing_cache(file.read())
+            finally:
+                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+    else:
+        timing_cache = build_config.create_timing_cache(b"")
+    return timing_cache
+
+def combine_timing_cache(build_config, file_path):
+    if not file_path or not os.path.exists(file_path):
+        return
+    curr_timing_cache = build_config.get_timing_cache()
+    other_timing_cache = create_timing_cache(build_config, file_path)
+    curr_timing_cache.combine(other_timing_cache, True)
+    return curr_timing_cache
+def save_timing_cache(build_config, file_path):
+    if not file_path:
+        return
+    timing_cache = build_config.get_timing_cache()
+    combine_timing_cache(build_config, file_path)
+    with open(file_path, "wb") as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(timing_cache.serialize())
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 def main():
     exec_config = args_parser()
@@ -425,22 +466,21 @@ def main():
     load_plugins(IXRT_LOGGER, exec_config)
     if exec_config.run_profiler:
         os.environ["IXRT_USE_PROFILER"] = "1"
-    process_supported_ops_info(exec_config.support)
     serialized_network = create_engine(exec_config)
     runtime = ixrt.Runtime(IXRT_LOGGER)
     engine = runtime.deserialize_cuda_engine(serialized_network)
     assert engine
-    engine_observer = engine.create_engine_observer()
-    assert engine_observer
-    if exec_config.dump_graph is not None:
-        engine_observer.save_engine_graph(exec_config.dump_graph)
-
-    node_json_str = engine_observer.get_node_info()
-    graph_json_object = json.loads(node_json_str)
-
-    if exec_config.show_param:
-        print("graph nodes: ", graph_json_object["nodes"])
-        print("graph edges: ", graph_json_object["edges"])
+    # engine_observer = engine.create_engine_observer()
+    # assert engine_observer
+    # if exec_config.dump_graph is not None:
+    #     engine_observer.save_engine_graph(exec_config.dump_graph)
+    #
+    # node_json_str = engine_observer.get_node_info()
+    # graph_json_object = json.loads(node_json_str)
+    #
+    # if exec_config.show_param:
+    #     print("graph nodes: ", graph_json_object["nodes"])
+    #     print("graph edges: ", graph_json_object["edges"])
 
     context = engine.create_execution_context()
     assert context
@@ -453,7 +493,7 @@ def main():
         acc_verify_config = create_acc_comp_config(exec_config)
         exec_config.iterations = 1
         exec_config.warmUp = 0
-        ixrt_layer_saver = IxrtLayerSaver(acc_verify_config.ixrt)
+        ixrt_layer_saver = IxrtLayerSaver(acc_verify_config.ixrt, acc_verify_config.tensors_to_watch)
         context.register_hook(
             "save_layer_output",
             ixrt_layer_saver.save_layer_output_hook,
@@ -493,7 +533,7 @@ def main():
                     shape = profile_shape[0]
                 else:
                     shape = inference_input_shapes[name]
-                context.set_binding_shape(i, shape)
+                context.set_input_shape(name, shape)
             else:
                 if name in inference_input_shapes:
                     print(
@@ -513,11 +553,17 @@ def main():
         name = engine.get_binding_name(i)
         dtype = engine.get_binding_dtype(i)
         shape = context.get_binding_shape(i)
-        if bsz is None or engine.binding_is_input(i):
-            bsz = shape[0]
-        size = np.dtype(ixrt.nptype(dtype)).itemsize
-        for s in shape:
-            size *= s
+        if 0 in shape:
+            print(f"Warning: Binding '{name}' has a shape with zero element: {shape}. Skipping memory allocation.")
+            continue
+        if engine.binding_is_input(i):
+            if bsz is None:
+                bsz = shape[0]
+            size = np.dtype(ixrt.nptype(dtype)).itemsize
+            for s in shape:
+                size *= s
+        else:
+            size = context.get_max_output_size(name)
         err, dptr = cudart.cudaMalloc(size)
         assert err == cudart.cudaError_t.cudaSuccess
         binding_data = {
@@ -533,8 +579,8 @@ def main():
         else:
             output_bindings.append(binding_data)
 
-    input_buffers = generate_buffers(input_bindings, parse_custom_inputs(exec_config))
-    output_buffers = generate_buffers(output_bindings)
+    input_buffers = generate_input_buffers(input_bindings, parse_custom_inputs(exec_config))
+    output_buffers = generate_output_buffers(output_bindings)
     if exec_config.verify_acc:
         from ixrt.cli.compare_result.ort_layer_saver import OrtLayerSaver
 
@@ -612,33 +658,14 @@ def main():
             if not exec_config.export_profiler.endswith(".csv"):
                 print("[Info] Use command end with .csv : --export_profiler result.csv")
                 exit(0)
-        if context.get_running_profiler():
+        profiler_context = context.get_running_profiler()
+        if profiler_context != "":
             sleep(0.5)
             if "IXRT_USE_PROFILER" in os.environ.keys():
                 del os.environ["IXRT_USE_PROFILER"]
-            infos = read_profiler_data()
+            infos = read_profiler_data(profiler_context)
             layer_names = infos[0]
             layer_infos = {}
-            graph_nodes = graph_json_object["nodes"]
-            graph_edges = graph_json_object["edges"]
-            for layer_name in layer_names:
-                layer_inputs = graph_nodes[layer_name]["input_edges"]
-                if len(graph_nodes[layer_name]["input_edges"]) > 0:
-                    layer_inputs.extend(graph_nodes[layer_name]["extra_input_edges"])
-                layer_infos[layer_name] = {}
-                layer_infos[layer_name]["op_type"] = graph_nodes[layer_name]["op"][
-                    "op_type"
-                ]
-                layer_infos[layer_name]["inputs"] = {}
-                for layer_input in layer_inputs:
-                    layer_infos[layer_name]["inputs"][layer_input] = graph_edges[
-                        layer_input
-                    ]
-                layer_infos[layer_name]["outputs"] = {}
-                for layer_output in graph_nodes[layer_name]["output_edges"]:
-                    layer_infos[layer_name]["outputs"][layer_output] = graph_edges[
-                        layer_output
-                    ]
 
             infos.append(layer_infos)
 

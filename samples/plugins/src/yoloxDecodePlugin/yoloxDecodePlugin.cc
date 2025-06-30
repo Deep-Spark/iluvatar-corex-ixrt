@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include "yoloxDecodePlugin.h"
 
 #include <cuda_fp16.h>

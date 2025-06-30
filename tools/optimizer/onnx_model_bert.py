@@ -61,7 +61,7 @@ from passes.fusion_utils import FusionUtils
 from passes.fusion_videobert_attention import FusionVideoBertAttention
 from passes.fusion_vit_attention import FusionVITAttention, FusionTorchvisionVITAttention
 from passes.fusion_xsoftmax import FusionXSoftmax
-from passes.fuse_inverse_sigmoid import FusionLayerInverseSigmoid
+from passes.fuse_inverse_sigmoid import FusionLayerInverseSigmoid,FusionDinoLayerInverseSigmoid
 from passes.fuse_l2_normalization import FusionLayerL2Normalization
 from passes.fuse_omdet_attention import FusionLayerOmdetAttention
 from passes.onnx_model import OnnxModel
@@ -206,6 +206,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_omdet_inverse_sigmoid(self):
         fusion = FusionLayerInverseSigmoid(self)
+        fusion.apply()
+
+    def fuse_dino_inverse_sigmoid(self):
+        fusion = FusionDinoLayerInverseSigmoid(self)
         fusion.apply()
 
     def fuse_omdet_attention(self):
@@ -525,6 +529,7 @@ class BertOnnxModel(OnnxModel):
         if options.enable_omdet:
             self.fuse_omdet_attention()
             self.fuse_omdet_inverse_sigmoid()
+            # self.fuse_dino_inverse_sigmoid()
             self.fuse_l2_normalization()
 
         self.fuse_custom_xsoftmax()

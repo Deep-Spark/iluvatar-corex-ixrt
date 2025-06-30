@@ -168,7 +168,7 @@ class FusionT5EncoderAttention(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend(
             [helper.make_attribute("hidden_size", hidden_size)]
@@ -397,7 +397,7 @@ class FusionT5DecoderAttention(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("scale", 1.0)])
         attention_node.attribute.extend([helper.make_attribute("has_mask", has_mask)])
         attention_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])

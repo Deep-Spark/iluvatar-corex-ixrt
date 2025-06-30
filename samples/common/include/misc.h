@@ -14,13 +14,12 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <numeric>
 
 #include "NvInfer.h"
@@ -44,11 +43,9 @@
     } while (0)
 #endif
 
+namespace nvinfer1::samples::common {
 inline uint32_t getElementSize(nvinfer1::DataType t) noexcept {
     switch (t) {
-        case nvinfer1::DataType::kINT64:
-        case nvinfer1::DataType::kFLOAT64:
-            return 8;
         case nvinfer1::DataType::kINT32:
         case nvinfer1::DataType::kFLOAT:
             return 4;
@@ -56,7 +53,6 @@ inline uint32_t getElementSize(nvinfer1::DataType t) noexcept {
             return 2;
         case nvinfer1::DataType::kBOOL:
         case nvinfer1::DataType::kINT8:
-        case nvinfer1::DataType::kUINT8:
             return 1;
     }
     return 0;
@@ -96,3 +92,4 @@ inline uint64_t NowUs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
+}  // namespace nvinfer1::samples::common

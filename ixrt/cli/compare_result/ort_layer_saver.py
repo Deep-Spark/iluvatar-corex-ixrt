@@ -54,8 +54,13 @@ class OrtLayerSaver:
             raw_onnx.SerializeToString(), providers=providers
         )
 
+        input_buffers = {}
+        for input in ort_session.get_inputs():
+            input_name = input.name
+            input_buffers[input_name] = self.input_buffers[input_name]
+
         outputs = [x.name for x in ort_session.get_outputs()]
-        ort_outs = ort_session.run(outputs, self.input_buffers)
+        ort_outs = ort_session.run(outputs, input_buffers)
         ort_outs = OrderedDict(zip(outputs, ort_outs))
         for edge_name, v in ort_outs.items():
             if v is not None:
@@ -65,7 +70,7 @@ class OrtLayerSaver:
                     producer_node="ORT_Node", edge_name=edge_name, saved_path=filename
                 )
         # also save input for better comparison
-        for edge_name, v in self.input_buffers.items():
+        for edge_name, v in input_buffers.items():
             filename = get_edge_path(self.config.ort, edge_name)
             np.save(filename, v)
             self.inference_result[edge_name] = InferResult(

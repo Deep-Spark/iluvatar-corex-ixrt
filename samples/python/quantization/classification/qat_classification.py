@@ -19,15 +19,16 @@ import os
 import torch
 import torch.nn.functional as F
 import tqdm
-from ixrt.deploy.api import *
-from ixrt.deploy.quantizer.algorithm.qat import convert_to_qat
-from ixrt.deploy.utils.seed import manual_seed
 from torchvision import models
 from utils.accuracy import compute_model_acc
 from utils.argparser import create_argparser
 from utils.calibration import create_dataloader
 from utils.imagenet import create_train_dataloader
 from utils.infer_ixrt import infer_by_ixrt, verify_quantized_model
+
+from ixrt.deploy.api import *
+from ixrt.deploy.quantizer.algorithm.qat import convert_to_qat
+from ixrt.deploy.utils.seed import manual_seed
 
 manual_seed(43)
 device = 0 if torch.cuda.is_available() else "cpu"
@@ -103,7 +104,6 @@ def quantize_cls_model(args, model_name, model, dataloader):
         create_source(
             model,
             example_inputs=test_inputs,
-            rename_edges = args.rename_edges
         ),
         ToDevice(device=device),
         compute_model_acc(
@@ -149,7 +149,6 @@ def parse_args():
     parser.add_argument("--train_dir", type=str, help="Training dataset dir.")
     parser.add_argument("--epoch", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--rename_edges", type=bool, default=False)
     args = parser.parse_args()
 
     args.use_ixquant = not args.use_ixrt

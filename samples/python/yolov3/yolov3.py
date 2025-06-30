@@ -26,11 +26,12 @@ import time
 
 import cuda.cudart as cudart
 import numpy as np
-import ixrt
 from coco_labels import coco80_to_coco91_class, labels
 from common import post_process_withoutNMS, precess_batch_input
 from tqdm import tqdm
 from tqdm.contrib import tzip
+
+import ixrt
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
@@ -152,19 +153,17 @@ def run_with_engine(config):
 
 def build_engine_trtapi(config):
     onnx_model = os.path.join(config.model_path, "quantized_yolov3_decoder_nms.onnx")
-    quant_file = os.path.join(config.model_path, "quantized_yolov3.json")
     IXRT_LOGGER = ixrt.Logger(ixrt.Logger.WARNING)
     builder = ixrt.Builder(IXRT_LOGGER)
     EXPLICIT_BATCH = 1 << (int)(ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     network = builder.create_network(EXPLICIT_BATCH)
     build_config = builder.create_builder_config()
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
+    parser.parse_from_file(onnx_model)
 
     if config.precision == "int8":
-        parser.parse_from_files(onnx_model, quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
     else:
-        parser.parse_from_file(onnx_model)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
 
     plan = builder.build_serialized_network(network, build_config)

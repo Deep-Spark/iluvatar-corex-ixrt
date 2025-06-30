@@ -15,6 +15,6 @@
 #
 
 SET(SAMPLE_SOURCES sampleYoloV3.cc)
-set(EXTRA_LIBS common)
+set(EXTRA_LIBS oss_common)
 set(PLUGINS_NEEDED ON)
 include(../CMakeSamplesTemplate.txt)

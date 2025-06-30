@@ -15,20 +15,21 @@
  *   under the License.
  */
 
-
 #include <iostream>
 #include <string>
 
 #include "classification.h"
 
 using namespace std;
+using namespace nvinfer1::samples;
 void EchoHelp() {
     std::string help_text =
         "------------------ResNet18 simple example------------------\n"
         "How to run                                                 \n"
-        "   ./ixrt_demo TARGET                                      \n"
+        "   ./sampleResNet TARGET                                      \n"
         "   where TARGET can be:                                    \n"
-        "  - tex_i8                                                  \n"
+        "  - tex_i8_explicit                                         \n"
+        "  - tex_i8_implicit                                         \n"
         "  - tex_fp16                                                \n"
         "  - tex_fp32                                                \n"
         "  - tex_s_onnx                                              \n"
@@ -36,21 +37,24 @@ void EchoHelp() {
         "  - tmc                                                     \n"
         "  - ted                                                     \n"
         "  - tmcd                                                    \n"
-        "  - engine_only                                             \n"
-        "  - hook                                                     \n"
+        "  - load_engine                                             \n"
+        "  - hook                                                    \n"
         "-----------------------------------------------------------\n";
     std::cout << help_text << std::endl;
 }
 void RunExample(std::string choice) {
-    if (choice == "tex_i8") {
-        IxRTAPIExecute("data/resnet18/resnet18_qdq.onnx", "", "/tmp/resnet18_i8.engine",
-                           nvinfer1::BuilderFlag::kINT8);
+    if (choice == "tex_i8_explicit") {
+        IxRTAPIExecute("data/resnet18/resnet18_qdq_int8.onnx", "", "/tmp/resnet18_i8.engine",
+                       nvinfer1::BuilderFlag::kINT8);
+    } else if (choice == "tex_i8_implicit") {
+        IxRTAPIExecuteImplicitQuantization("data/resnet18/resnet18.onnx",
+                                           "data/resnet18/resnet18_int8_quantization.json",
+                                           "/tmp/resnet18_i8_implicit.engine", nvinfer1::BuilderFlag::kINT8);
     } else if (choice == "tex_fp16") {
-        IxRTAPIExecute("data/resnet18/resnet18.onnx", "", "/tmp/resnet18_fp16.engine",
-                           nvinfer1::BuilderFlag::kFP16);
+        IxRTAPIExecute("data/resnet18/resnet18.onnx", "", "/tmp/resnet18_fp16.engine", nvinfer1::BuilderFlag::kFP16);
     } else if (choice == "tex_fp32") {
         IxRTAPIExecuteCustomFP32Layers("data/resnet18/resnet18.onnx", "",
-                                           nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS);
+                                       nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS);
     } else if (choice == "tex_s_onnx") {
         IxRTAPIExecuteFromSerializedONNX();
     } else if (choice == "ten") {

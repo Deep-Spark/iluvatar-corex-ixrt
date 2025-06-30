@@ -18,8 +18,9 @@ import os.path
 
 import numpy as np
 import torch
-from ixrt.deploy import create_target
 from tqdm import tqdm
+
+from ixrt.deploy import create_target
 
 
 def infer_by_ixrt(

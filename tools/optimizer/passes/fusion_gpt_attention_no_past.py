@@ -71,7 +71,7 @@ class FusionGptAttentionNoPast(Fusion):
                 tensor_shape = [dim for dim in tensor_value.dims]
                 break
         head_dim = math.ceil(div_value * div_value)
-        hidden_size = tensor_shape[0]
+        hidden_size = tensor_shape[1]
         num_heads = hidden_size // head_dim
 
         return num_heads, hidden_size
@@ -100,7 +100,7 @@ class FusionGptAttentionNoPast(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend(
             [helper.make_attribute("hidden_size", hidden_size)]

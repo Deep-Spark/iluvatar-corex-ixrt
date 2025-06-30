@@ -18,6 +18,7 @@ import argparse
 
 import onnx
 import torch
+
 from ixrt.deploy import Pipeline, create_source, create_target, static_quantize
 from ixrt.deploy.fusion.level2.yolo_pass import Yolov5Pass
 

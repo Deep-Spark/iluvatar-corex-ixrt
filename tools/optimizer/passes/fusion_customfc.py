@@ -90,7 +90,7 @@ class FusionCustomFCGPT2(Fusion):
         )
         fused_node.domain = "com.iluvatar"
         fused_node.attribute.extend([helper.make_attribute("out_dims", b.shape[0])])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fused_node.attribute.extend([helper.make_attribute("W", matmul_weight)])
         fused_node.attribute.extend([helper.make_attribute("B", matmul_bias)])
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
@@ -177,7 +177,7 @@ class FusionCustomFcRoformer(Fusion):
         )
         fused_node.domain = "com.iluvatar"
         fused_node.attribute.extend([helper.make_attribute("out_dims", b.shape[0])])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fused_node.attribute.extend([helper.make_attribute("W", weight)])
         fused_node.attribute.extend([helper.make_attribute("B", bias)])
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
@@ -247,8 +247,8 @@ class FusionCustomFC(Fusion):
             name=self.model.create_node_name("CustomFC", "MatMul_AddBias_"),
         )
         fused_node.domain = "com.iluvatar"
-        fused_node.attribute.extend([helper.make_attribute("out_dims", b.shape[0])])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("out_dims", b.shape[-1])])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fused_node.attribute.extend([helper.make_attribute("W", matmul_weight)])
         fused_node.attribute.extend([helper.make_attribute("B", matmul_bias)])
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])

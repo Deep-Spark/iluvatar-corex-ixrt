@@ -56,6 +56,7 @@ class AddQdqPair(BasePass):
                 deq_output_var = self.transformer.make_variable(
                     name=f"{var_name}_DequantizeLinear_Output", dtype=DataType.FLOAT
                 )
+                attrs = dict(axis=qparam.quant_dim) if qparam.per_channel else dict()
 
                 if self.transformer.get_src_operator(var_name) is not None and (
                     not self.transformer.get_src_operator(var_name).is_quant_operator
@@ -72,12 +73,14 @@ class AddQdqPair(BasePass):
                         to=DataType.INT8,
                     )
                     dequant_inputs = [cast_output_var.name, scale_var.name, zp_var.name]
+
                     dequantize_op = self.transformer.make_operator(
                         name=f"{var_name}__DequantizeLinear",
                         op_type="DequantizeLinear",
                         inputs=dequant_inputs,
                         outputs=[deq_output_var.name],
-                        attr_cls=DequantizeLinearAttr,
+                        attr_cls=DequantizeLinearAttr if qparam.per_channel else BaseOperatorAttr,
+                        **attrs
                     )
                     deq_output.append(deq_output_var.name)
                 elif not self.transformer.is_leaf_variable(var_name) or (
@@ -89,6 +92,8 @@ class AddQdqPair(BasePass):
                         deq_output_var.name,
                         scale_var.name,
                         zp_var.name,
+                        qparam.per_channel,
+                        qparam.quant_dim
                     )
                     deq_output.append(deq_output_var.name)
                 else:
@@ -107,7 +112,8 @@ class AddQdqPair(BasePass):
                         op_type="DequantizeLinear",
                         inputs=dequant_inputs,
                         outputs=[deq_output_var.name],
-                        attr_cls=DequantizeLinearAttr,
+                        attr_cls=DequantizeLinearAttr if qparam.per_channel else BaseOperatorAttr,
+                        **attrs
                     )
                     deq_output.append(deq_output_var.name)
 
@@ -122,7 +128,7 @@ class AddQdqPair(BasePass):
                 if self.transformer.is_quant_variable(var_name):
                     qparam = self.transformer.get_quant_parameter(var_name)
                     input_var = self.transformer.make_variable(
-                        name=f"{var_name}_QuantizeLinear_Input"
+                        name=f"{var_name}_QuantizeLinear_Input", dtype=DataType.FLOAT
                     )
                     scale_var = self.transformer.make_variable(
                         name=f"{var_name}_scale", value=qparam.scale
@@ -133,7 +139,9 @@ class AddQdqPair(BasePass):
                     )
                     op_outputs.append(input_var.name)
                     self.create_qdq_ops(
-                        var_name, input_var.name, var_name, scale_var.name, zp_var.name
+                        var_name, input_var.name, var_name, scale_var.name, zp_var.name,
+                        qparam.per_channel,
+                        qparam.quant_dim
                     )
             operator.replace_outputs(op_outputs)
 
@@ -162,6 +170,8 @@ class AddQdqPair(BasePass):
                             deq_output_var.name,
                             scale_var.name,
                             zp_var.name,
+                            qparam.per_channel,
+                            qparam.quant_dim
                         )
                         deq_output.append(deq_output_var.name)
                     else:
@@ -176,18 +186,20 @@ class AddQdqPair(BasePass):
 
         operator.replace_inputs(deq_output)
 
-    def create_qdq_ops(self, var_name, input_name, output_name, scale_name, zp_name):
+    def create_qdq_ops(self, var_name, input_name, output_name, scale_name, zp_name, per_channel, axis):
         quant_inputs = [input_name, scale_name, zp_name]
         quant_output = self.transformer.make_variable(
-            name=f"{var_name}_QuantizeLinear_Output"
+            name=f"{var_name}_QuantizeLinear_Output", dtype=DataType.INT8
         )
 
+        attrs = dict(axis=axis) if per_channel else dict()
         quantize_op = self.transformer.make_operator(
             name=f"{var_name}_QuantizeLinear",
             op_type="QuantizeLinear",
             inputs=quant_inputs,
             outputs=[quant_output.name],
-            attr_cls=QuantizeLinearAttr,
+            attr_cls=QuantizeLinearAttr if per_channel else BaseOperatorAttr,
+            **attrs
         )
 
         dequant_inputs = [quant_output.name, scale_name, zp_name]
@@ -197,5 +209,6 @@ class AddQdqPair(BasePass):
             op_type="DequantizeLinear",
             inputs=dequant_inputs,
             outputs=[output_name],
-            attr_cls=DequantizeLinearAttr,
+            attr_cls=DequantizeLinearAttr if per_channel else BaseOperatorAttr,
+            **attrs
         )

@@ -19,7 +19,6 @@ import json
 import os
 
 import ixrt
-import ixrt
 
 TRT_LOGGER = ixrt.Logger(ixrt.Logger.VERBOSE)
 

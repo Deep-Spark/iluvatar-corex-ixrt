@@ -34,3 +34,19 @@ cmake --build build -j
 ./sampleResNet tex_i8
 ./sampleResNet tex_fp16
 ```
+
+3. About demo options
+
+| option | description                                                           |
+| ------ |-----------------------------------------------------------------------|
+| tex_i8_explicit | run resnet18 int8 demo with Q/DQ node in onnx file                    |
+| tex_i8_implicit | run resnet18 int8 demo with normal onnx file and tensor dynamic range |
+| tex_fp16 | run resnet18 fp16 demo                                                |
+| tex_fp32 | run resnet18 fp32 demo                                                |
+| tex_s_onnx | run resnet18 from separated ONNX file                                 |
+| ten | run resnet18 with enqueueV2 method                                    |
+| tmc | run resent18 with multi execution context                             |
+| ted | run resnet18 with dynamic shape                                       |
+| tmcd | run resnet18 with multi execution context and dynamic shape           |
+| load_engine | run resnet18 without building engine procedure                        |
+| hook | run resnet18 with hook to acquire tensor data                         |

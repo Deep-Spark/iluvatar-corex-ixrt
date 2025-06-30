@@ -118,13 +118,22 @@ def get_hist_str(output, hist_range=None, title="Histogram"):
     except Exception as err:
         raise
 
-
+def standardize_tensor(a, b):
+    if a.shape != b.shape:
+        raise ValueError("Input arrays must have the same shape.")
+    a = a * 1.
+    b = b * 1.
+    a = a.flatten().astype(np.float64)
+    b = b.flatten().astype(np.float64)
+    # if a number both calculated by ixrt or ort is inf or nan, change it to 0
+    mask_a = np.isinf(a) | np.isnan(a)
+    mask_b = np.isinf(b) | np.isnan(b)
+    combined_mask = mask_a | mask_b
+    a[combined_mask] = 0
+    b[combined_mask] = 0
+    return a, b
 def compare_tensor(res, ref):
-    if res.dtype == np.bool_:
-        res = res * 1
-        ref = ref * 1
-    res = res.flatten().astype(np.float64)
-    ref = ref.flatten().astype(np.float64)
+    res, ref = standardize_tensor(res, ref)
 
     absolute_diff = np.abs(res - ref)
     relative_diff = np.abs(res - ref) / (np.maximum(np.abs(res), np.abs(ref)) + 1e-3)
@@ -194,7 +203,6 @@ def find_possible_common_output(edge_name, ixrt_saver, ort_saver):
     else:
         return oe_to_find
 
-
 def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
     ort_result = ort_saver.inference_result
     final_result = True
@@ -244,16 +252,33 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
             ortpath = ort_result[ort_edge_name].saved_path
             ort_res = np.load(ortpath)
         if ixrt_res.shape != ort_res.shape:
-            print(
-                "incompatible shape between IxRT and Ort for edge:",
-                edge_name,
-                "ixrt:",
-                ixrt_res.shape,
-                "ort:",
-                ort_res.shape,
-            )
-            continue
-
+            
+            if len(ixrt_res.shape) != len(ort_res.shape): 
+                print(
+                    "incompatible shape between IxRT and Ort for edge:",
+                    edge_name,
+                    "ixrt:",
+                    ixrt_res.shape,
+                    "ort:",
+                    ort_res.shape,
+                )
+                continue
+            
+            else:
+                min_shape = tuple(min(s1, s2) for s1, s2 in zip(ixrt_res.shape, ort_res.shape))
+                slices = tuple(slice(0, s) for s in min_shape)
+                ort_res = ort_res[slices]
+                ixrt_res = ixrt_res[slices]
+                
+                print(
+                    "Pleace check incompatible shape between IxRT and Ort for edge:",
+                    edge_name,
+                    "ixrt:",
+                    ixrt_res.shape,
+                    "ort:",
+                    ort_res.shape,
+                )
+                
         if ixrt_res.size == 0 and ort_res.size == 0:
             print(
                 "empty data in bath IxRT and Ort for edge:",
@@ -340,7 +365,7 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                 + "\n"
                 + edge_name
                 + "\n"
-                + str(ixrt_res.shape)
+                + str(ixrt_res.shape) + ", " +str(ixrt_res.dtype)
                 + "\n",
                 measurement_str,
             ]
@@ -355,10 +380,14 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
         )
     )
     result_str = "\033[32mRIGHT\033[0m" if final_result else "\033[31mWRONG\033[0m"
-    if error_recorder != []:
+    if error_recorder:
         print(red("Warnings happened during comparison:"))
     for err_msg in error_recorder:
         print(red("- " + err_msg))
+
+    display_memory_crash_check(ixrt_saver.edges_with_memory_crash)
+    final_result &= display_memory_watchers(ixrt_saver.mem_diagnosis.watchers)
+
     print("---------Comparison report---------")
     print("Accuracy compare program has finished!")
     print("Compared with onnxruntime, result calculated from IxRT is", result_str)
@@ -368,3 +397,59 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
         )
     print("-------------end-------------------")
     return final_result
+
+def display_memory_crash_check(checked_result):
+    if not checked_result:
+        return
+
+    instruction = "--watch "+" ".join([i.tensor_name for i in checked_result])
+    print(red("Memory crashed during comparison, you may need to add parameter to ixrtexec: \n  "+instruction))
+    tbl = [[i.tensor_name, i.producer, i.consumer_found_crashed] for i in checked_result]
+    print(
+        tabulate(
+            tbl,
+            headers=["Tensor name", "Producer", "Found crashed when consuming"],
+            tablefmt="grid",
+            numalign="center",
+        )
+    )
+def display_memory_watchers(watchers):
+    ret = True
+    if watchers:
+        print ("Result of tensor memory watcher")
+    else:
+        return ret
+
+    form_data = []
+    for name, watcher in watchers.items():
+        watch_result = watcher.get_result()
+        if not watch_result.changed_by:
+            diagnosis = green("No memory crash found")
+        else:
+            details = watch_result.details
+            measurement_str = f"""
+    Before VS After
+---- Relative Diff Max ----
+{details.diff_rel_avg}
+---- Absolute Diff Max ----
+{details.diff_max}
+---- Absolute Diff Sum ----
+{details.diff_sum}
+---- Cosine Similarity ----
+{details.cosine_sim}
+{details.diff_hist}
+{details.rel_diff_hist}
+"""
+            diagnosis = 'changed by -->' + red(watch_result.changed_by) + '<--' + measurement_str
+            ret = False
+
+        form_data.append([watch_result.tensor_name, diagnosis, watch_result.producer, "\n".join(watch_result.consumers)])
+    print(
+        tabulate(
+            form_data,
+            headers=["Watch", "Diagnosis", "Producer", "Consumers"],
+            tablefmt="grid",
+            numalign="center",
+        )
+    )
+    return ret

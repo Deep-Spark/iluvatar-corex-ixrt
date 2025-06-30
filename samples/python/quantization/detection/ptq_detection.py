@@ -20,13 +20,14 @@ import cv2
 import numpy as np
 import torch
 import torchvision.datasets
-from ixrt.deploy.api import *
-from ixrt.deploy.utils.seed import manual_seed
 from torchvision import models
 from torchvision import transforms as T
 from utils.accuracy import compute_model_mAP
 from utils.argparser import create_argparser
 from utils.coco import create_dataloader
+
+from ixrt.deploy.api import *
+from ixrt.deploy.utils.seed import manual_seed
 
 manual_seed(43)
 device = 0 if torch.cuda.is_available() else "cpu"

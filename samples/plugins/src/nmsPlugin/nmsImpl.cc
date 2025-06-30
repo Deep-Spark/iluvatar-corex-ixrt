@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include "nmsImpl.h"
 
 #include <cstdio>

@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #pragma once
 #include <algorithm>
 #include <fstream>
@@ -24,7 +23,7 @@
 #include "NvInfer.h"
 #include "misc.h"
 
-namespace SampleHelper {
+namespace nvinfer1::samples::common {
 class IBatchStream {
    public:
     virtual void reset(int firstBatch) = 0;
@@ -64,4 +63,4 @@ class BatchStream : public IBatchStream {
     std::vector<std::string> mDataDirs;  //!< Directories where the files can be found
     std::vector<std::string> mFilePaths;
 };
-}  // end of namespace SampleHelper
+}  // end of namespace nvinfer1::samples::common

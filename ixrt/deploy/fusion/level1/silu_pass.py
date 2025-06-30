@@ -23,7 +23,6 @@ from ..base_pass import BasePass, registe_pass
 from ..matcher import GraphMatcher, PatternGraph, build_sequence_graph
 
 
-@registe_pass(level=1)
 class FuseSiLUPass(BasePass):
     def process(self, graph: Graph) -> Graph:
         pattern = build_sequence_graph([OP.SIGMOID, OP.MUL])

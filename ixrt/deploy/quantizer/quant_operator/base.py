@@ -120,3 +120,21 @@ def quant_based_weight_bias_operator(
     if len(op.inputs) >= 3:
         bias = graph.get_variable(op.inputs[2])
         bias.set_value_observer(operator_observer_config.bias)
+
+def quant_pertensor_weight_bias_operator(
+    graph: Graph,
+    op: Operator,
+    operator_observer_config: QuantOperatorObserverConfig,
+    quant_outputs: bool = True,
+):
+    quant_activations(
+        graph,
+        op,
+        operator_observer_config,
+        num_activations=2,
+        quant_outputs=quant_outputs,
+    )
+
+    if len(op.inputs) >= 3:
+        bias = graph.get_variable(op.inputs[2])
+        bias.set_value_observer(operator_observer_config.bias)

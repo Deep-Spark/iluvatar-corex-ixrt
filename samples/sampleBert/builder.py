@@ -54,7 +54,6 @@ import sys
 import time
 
 import numpy as np
-import ixrt
 from builder_utils import (  # Attention Keys; Transformer Keys; SQuAD Output Keys
     B_AOUT,
     B_LOUT,
@@ -69,6 +68,8 @@ from builder_utils import (  # Attention Keys; Transformer Keys; SQuAD Output Ke
     load_onnx_weights_and_quant,
     load_pytorch_weights_and_quant,
 )
+
+import ixrt
 
 trt_version = [int(n) for n in ixrt.__version__.split(".")]
 plugin_lib_name = (
@@ -142,7 +143,9 @@ def custom_fc(network, input_tensor, out_dims, W, B):
         "out_dims", np.array(out_dims, dtype=np.int32), ixrt.PluginFieldType.INT32
     )
     pf_type = ixrt.PluginField(
-        "type_id", np.array(int(ixrt.float16), dtype=np.int32), ixrt.PluginFieldType.INT32
+        "type_id",
+        np.array(int(ixrt.float16), dtype=np.int32),
+        ixrt.PluginFieldType.INT32,
     )
     pf_W = ixrt.PluginField("W", W, ixrt.PluginFieldType.FLOAT32)
     fields = [pf_out_dims, pf_type, pf_W]
@@ -445,6 +448,7 @@ def emb_layernorm(
         weights_dict["bert_embeddings_layernorm_beta"],
         ixrt.PluginFieldType.FLOAT32,
     )
+
     wgamma = ixrt.PluginField(
         "bert_embeddings_layernorm_gamma",
         weights_dict["bert_embeddings_layernorm_gamma"],
@@ -527,16 +531,18 @@ def build_engine(batch_sizes, sequence_lengths, config, weights_dict):
 
         squad_logits = squad_output("cls_", config, weights_dict, network, bert_out)
         squad_logits_out = squad_logits.get_output(0)
+        squad_logits.set_output_type(0, ixrt.float32)
 
         network.mark_output(squad_logits_out)
 
         build_start_time = time.time()
-        engine = builder.build_engine(network, builder_config)
+        serialized_engine = builder.build_serialized_network(network, builder_config)
         build_time_elapsed = time.time() - build_start_time
         TRT_LOGGER.log(
-            TRT_LOGGER.INFO, "build engine in {:.3f} Sec".format(build_time_elapsed)
+            TRT_LOGGER.INFO,
+            "build serialized_engine in {:.3f} Sec".format(build_time_elapsed),
         )
-        return engine
+        return serialized_engine
 
 
 def str2bool(v):
@@ -651,9 +657,7 @@ def main():
 
     with build_engine(
         args.batch_size, args.sequence_length, config, weights_dict
-    ) as engine:
-        TRT_LOGGER.log(TRT_LOGGER.VERBOSE, "Serializing Engine...")
-        serialized_engine = engine.serialize()
+    ) as serialized_engine:
         TRT_LOGGER.log(TRT_LOGGER.INFO, "Saving Engine to {:}".format(args.output))
         with open(args.output, "wb") as fout:
             fout.write(serialized_engine)
