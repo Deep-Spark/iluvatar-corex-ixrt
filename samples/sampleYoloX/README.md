@@ -11,16 +11,6 @@ Install IxRT as per the [IxRT install](ixrt/install.html, You can guide them to 
 
 The official documentation describes how to export a pytorch model as an onnx model. You can also download the onnx model from the official [repository](https://github.com/Megvii-BaseDetection/YOLOX/tree/main/demo/ONNXRuntime) or obtain from the data folder of the ixrt installation package.
 
-## Quantuzation(optional)
-
-Quantify and export QDQ-ONNX, which can be loaded and deployed by ixrt.
-
-```bash
-cd samples/sampleYoloX
-DATADIR=$(realpath ../../data/yolox_m)
-python3 yolox_qdq.py --model ${DATADIR}/yolox_m.onnx --calib_path ${DATADIR} --save_model_path ${DATADIR}/yolox_m_qdq_quant.onnx
-```
-
 ## Model Conversion
 
 Append implemented decoders and nms plugins.
