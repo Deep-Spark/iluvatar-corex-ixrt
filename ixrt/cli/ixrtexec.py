@@ -127,14 +127,12 @@ def create_serialized_network_by_build(exec_config):
             raise ValueError(f" no such file path {exec_config.quant_file}")
 
     elif exec_config.precision == "int8":
-        from ixrt.deploy.api import create_source
-        graph = create_source(onnx_path)()
-        for op_name, op_val in graph.operators.items():
-            if (
-                op_val.op_type == "QuantizeLinear"
-                or op_val.op_type == "DequantizeLinear"
-            ):
+        onnx_model = onnx.load(onnx_path)
+        graph = onnx_model.graph
+        for node in graph.node:
+            if node.op_type in ["QuantizeLinear", "DequantizeLinear"]:
                 import_quantified_qdq_model = True
+                break
         if not import_quantified_qdq_model:
             calibration_tensor_shape = {}
             dynamic_min_opt_max_shape = (
@@ -163,7 +161,6 @@ def create_serialized_network_by_build(exec_config):
                 internally_quantified_qdq_model_params,
             )
             restore_inputs_dimensions(onnx_path, internally_quantified_qdq_model)
-        del graph
 
 
     IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
