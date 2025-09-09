@@ -31,6 +31,7 @@ from onnx_model_rnn import RnnOnnxModel
 from onnx_model_cosyvoice import cosyvoiceOnnxModel
 from onnx_model_QA_Clip import QAClipOnnxModel
 from onnx_model_gdino import GroundingDinoOnnxModel
+from onnx_model_stable_diffusion import StableDiffusionOnnxModel
 
 from onnxsim import simplify
 from passes.fusion_options import FusionOptions
@@ -52,6 +53,7 @@ MODEL_TYPES = {
     "cosyvoice": (cosyvoiceOnnxModel, None, "pytorch", 1),
     "QA_Clip": (QAClipOnnxModel, None, "pytorch", 1),
     "gdino": (GroundingDinoOnnxModel, None, "pytorch", 1),
+    "stable_diffusion": (StableDiffusionOnnxModel, None, "pytorch", 1),
 }
 
 
@@ -201,7 +203,7 @@ def args_parser():
         "--model_type",
         type=str,
         default="bert",
-        choices=["bert", "swint", "roformer", "t5", "yolo", "gpt2", "vit", "conformer","PVT","omdet", "rnn", "cosyvoice", "QA_Clip", "gdino"],
+        choices=["bert", "swint", "roformer", "t5", "yolo", "gpt2", "vit", "conformer","PVT","omdet", "rnn", "cosyvoice", "QA_Clip", "gdino", "stable_diffusion"],
         help="Which kind of model to optimize",
     )
     parser.add_argument(
