@@ -71,8 +71,6 @@ Below is a sample of the model running with IxRT.
 | Sample                                                   | Language | Format | Description                                                                              |
 | -------------------------------------------------------- | -------- | ------ | ---------------------------------------------------------------------------------------- |
 | [sampleHideDataTransfer](samples/sampleHideDataTransfer) | C++      | ONNX   | Hide data transfer with ResNet18 ONNX                                                    |
-| [sampleAPIToResnet](samples/sampleAPIToResnet)           | C++      | ONNX   | Construct a ResNet18 network with IxRT custom layer API                                  |
-| [sampleAPIToInt8Resnet](samples/sampleAPIToInt8Resnet)   | C++      | ONNX   | Construct an int8 ResNet18 network with IxRT custom layer API                            |
 | [sampleBert](samples/sampleBert)                         | Python   | ONNX   | Construct an int8 and fp16 Bert with IxRT custom layer API                               |
 | [sampleQuant](samples/sampleQuant)                       | C++      | ONNX   | Demonstrate how to useIxRT deploy tool to quantize an onnx                               |
 | [python](samples/python)                                 | Python   | ONNX   | IXRT Quantization and Example Tool Using Python API                                      |
