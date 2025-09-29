@@ -39,6 +39,7 @@ from passes.fusion_skiplayernorm import (
     FusionSkipLayerNormalization,
 )
 from passes.fusion_stable_attention import FusionStableAttention
+from passes.fusion_cross_attention import FusionCrossAttention
 from passes.fusion_utils import FusionUtils
 
 from passes.onnx_model import OnnxModel
@@ -68,6 +69,8 @@ class StableDiffusionOnnxModel(OnnxModel):
         fusion = FusionStableAttention(self,self.hidden_size, self.num_heads)
         fusion.apply()
 
+        fusion = FusionCrossAttention(self,self.hidden_size, self.num_heads)
+        fusion.apply()
 
     def fuse_custom_fc(self):
         fusion = FusionCustomFC(self)
@@ -122,8 +125,8 @@ class StableDiffusionOnnxModel(OnnxModel):
 
         self.fuse_reshape()
 
-        if (options is None) or options.enable_skip_layer_norm:
-            self.fuse_skip_layer_norm()
+        # if (options is None) or options.enable_skip_layer_norm:
+        #     self.fuse_skip_layer_norm()
 
         self.fuse_attention()
 
