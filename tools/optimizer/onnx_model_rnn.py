@@ -28,6 +28,7 @@ from passes.fusion_utils import FusionUtils
 from passes.onnx_model import OnnxModel
 from passes.fuse_lstm import FusionLstmSqueeze
 from passes.fuse_lstm import FusionLstmTranspose
+from passes.fuse_lstm import FusionLstm
 
 logger = getLogger(__name__)
 
@@ -46,6 +47,9 @@ class RnnOnnxModel(OnnxModel):
         )
         super().__init__(model)
         self.utils = FusionUtils(self)
+    def fuse_lstm(self):
+        fusion = FusionLstm(self)
+        fusion.apply()
 
     def fuse_lstm_squeeze(self):
         fusion = FusionLstmSqueeze(self)
@@ -64,5 +68,6 @@ class RnnOnnxModel(OnnxModel):
             self.disable_shape_inference()
         self.fuse_lstm_squeeze()
         self.fuse_lstm_transpsose()
+        self.fuse_lstm()
         self.remove_unused_constant()
         logger.info(f"opset version: {self.get_opset_version()}")

@@ -119,3 +119,28 @@ class FusionLstmSqueeze(Fusion):
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         self.nodes_to_add.append(fused_node)
         self.nodes_to_remove.extend([node, lstm])
+    
+class FusionLstm(Fusion):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model, "RnnPlugin_IxRT", ["LSTM"], "rnn")
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        lstm = node
+
+        fused_node = helper.make_node(
+            "RnnPlugin_IxRT",
+            inputs=[lstm.input[0],lstm.input[1] ,lstm.input[2],lstm.input[3],lstm.input[5],lstm.input[6]],
+            outputs=[node.output[0],lstm.output[1],lstm.output[2]],
+            name=self.model.create_node_name("LSTM", "Lstm_"),
+        )
+        fused_node.domain = "com.iluvatar"
+        fused_node.attribute.extend([helper.make_attribute("direction", 1)])
+        fused_node.attribute.extend([helper.make_attribute("hidden_size", get_op_attribute(lstm, "hidden_size"))])
+        fused_node.attribute.extend([helper.make_attribute("rnn_mode", 2)])
+        fused_node.attribute.extend([helper.make_attribute("linear_before_reset", 1)])
+        fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
+        fused_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.nodes_to_add.append(fused_node)
+        self.nodes_to_remove.extend([node])
+    
