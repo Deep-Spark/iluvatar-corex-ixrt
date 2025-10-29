@@ -15,9 +15,9 @@
  *   under the License.
  */
 
-
 #include <dlfcn.h>
 
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -35,24 +35,29 @@
 #include "postprocess_utils.h"
 
 using namespace std;
-void InferenceYoloV3DeprecatedAPI(const string& onnx_path, const string& quant_path, const string& demo_image_path,
-                                  const string& engine_path);
-void WriteBuffer2Disk(const std::string& file_path, void* data, uint64_t len) {
+namespace nvinfer1::samples {
+using namespace common;
+
+void InferenceYoloV3DeprecatedAPI(const string &onnx_path, const string &quant_path, const string &demo_image_path,
+                                  const string &engine_path);
+
+void WriteBuffer2Disk(const std::string &file_path, void *data, uint64_t len) {
     std::ofstream outFile(file_path, std::ios::binary);
-    outFile.write((char*)data, len);
+    outFile.write((char *)data, len);
     outFile.close();
 }
 
-void PrintDims(const nvinfer1::Dims& dim, const std::string& prefix = "") {
+void PrintDims(const nvinfer1::Dims &dim, const std::string &prefix = "") {
     cout << prefix << endl;
     for (auto i = 0; i < dim.nbDims; ++i) {
         cout << dim.d[i] << " ";
     }
     cout << endl;
 }
+
 /* Execute YoloV3 with input having width of `width` */
-void ExecuteYoloV3(int width, nvinfer1::IExecutionContext* context, const vector<int>& io_indexes,
-                   nvinfer1::ICudaEngine* engine) {
+void ExecuteYoloV3(int width, nvinfer1::IExecutionContext *context, const vector<int64_t> &io_indexes,
+                   nvinfer1::ICudaEngine *engine) {
     cout << "--------------------------------------------------------------------------------" << endl;
     cout << "Execute YoloV3 with input of (1,3," << width << "," << width << ")" << endl;
     cout << "--------------------------------------------------------------------------------" << endl;
@@ -61,7 +66,7 @@ void ExecuteYoloV3(int width, nvinfer1::IExecutionContext* context, const vector
     context->setBindingDimensions(io_indexes.at(0), input_dims);
     // Step2: Allocate IO buffer
     std::vector<shared_ptr<float>> io_buffers_cpu;
-    std::vector<void*> io_buffers_gpu(engine->getNbBindings());
+    std::vector<void *> io_buffers_gpu(engine->getNbBindings());
     for (int i = 0; i < 4; ++i) {
         int n_volume = volume(context->getBindingDimensions(i));
         int n_bytes = GetBytes(context->getBindingDimensions(i), engine->getBindingDataType(i));
@@ -97,11 +102,12 @@ void ExecuteYoloV3(int width, nvinfer1::IExecutionContext* context, const vector
         CHECK(cudaFree(i));
     }
 }
-void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, const string& engine_path) {
+
+void InferenceYoloV3(const string &onnx_path, const string &demo_image_path, const string &engine_path) {
     std::string input_name("images");
     std::vector<string> output_names = {"decoder_52", "decoder_26", "decoder_13"};
     Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         return;
@@ -114,7 +120,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         return;
@@ -122,7 +128,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -130,7 +136,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -167,7 +173,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
         cout << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         return;
@@ -176,7 +182,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
     }
     std::shared_ptr<nvinfer1::ICudaEngine> engine;
     std::vector<char> buffer;
-    UniquePtr<nvinfer1::IHostMemory> plan;
+    UPtr<nvinfer1::IHostMemory> plan;
     if (false) {
         std::ifstream input(engine_path, std::ios::ate | std::ios::binary);
         // get current position in file
@@ -185,12 +191,12 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
         input.seekg(0, std::ios::beg);
         // read raw data
         buffer.resize(size);
-        std::vector<char>* raw_plan = &buffer;
+        std::vector<char> *raw_plan = &buffer;
         input.read(raw_plan->data(), size);
         engine = std::shared_ptr<nvinfer1::ICudaEngine>(
             runtime->deserializeCudaEngine(raw_plan->data(), raw_plan->size()), ObjectDeleter());
     } else {
-        plan = UniquePtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
+        plan = UPtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
         if (not plan) {
             std::cout << "Create serialized engine plan failed" << std::endl;
             return;
@@ -227,14 +233,14 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
 
     auto input_idx = engine->getBindingIndex(input_name.c_str());
     cout << "Input index: " << input_idx << endl;
-    for (const std::string& o_name : output_names) {
+    for (const std::string &o_name : output_names) {
         auto output_idx = engine->getBindingIndex(o_name.c_str());
         cout << "Output index: " << output_idx << endl;
     }
 
     // allocate buffer
     std::vector<shared_ptr<float>> io_buffers_cpu;
-    std::vector<void*> io_buffers_gpu(engine->getNbBindings());
+    std::vector<void *> io_buffers_gpu(engine->getNbBindings());
     for (int i = 0; i < 4; ++i) {
         int n_volume = volume(engine->getBindingDimensions(i));
         int n_bytes = GetBytes(engine->getBindingDimensions(i), engine->getBindingDataType(i));
@@ -248,7 +254,7 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
     }
     cout << "User input date prepare done" << endl;
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -276,11 +282,11 @@ void InferenceYoloV3(const string& onnx_path, const string& demo_image_path, con
     cout << "YoloV3 Inference API demo done" << endl;
 }
 
-void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_image_path, const string& engine_path) {
+void InferenceYoloV3DynamicShape(const string &onnx_path, const string &demo_image_path, const string &engine_path) {
     std::string input_name("images");
     std::vector<string> output_names = {"decoder_52", "decoder_26", "decoder_13"};
     Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         return;
@@ -293,7 +299,7 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         return;
@@ -301,7 +307,7 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -316,7 +322,7 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
     profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims{4, {1, 3, 320, 320}});
     profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, max_dims);
     config->addOptimizationProfile(profile);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         return;
@@ -353,7 +359,7 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
         cout << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         return;
@@ -362,7 +368,7 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
     }
     std::shared_ptr<nvinfer1::ICudaEngine> engine;
     std::vector<char> buffer;
-    UniquePtr<nvinfer1::IHostMemory> plan;
+    UPtr<nvinfer1::IHostMemory> plan;
     if (false) {
         std::ifstream input(engine_path, std::ios::ate | std::ios::binary);
         // get current position in file
@@ -371,12 +377,12 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
         input.seekg(0, std::ios::beg);
         // read raw data
         buffer.resize(size);
-        std::vector<char>* raw_plan = &buffer;
+        std::vector<char> *raw_plan = &buffer;
         input.read(raw_plan->data(), size);
         engine = std::shared_ptr<nvinfer1::ICudaEngine>(
             runtime->deserializeCudaEngine(raw_plan->data(), raw_plan->size()), ObjectDeleter());
     } else {
-        plan = UniquePtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
+        plan = UPtr<nvinfer1::IHostMemory>(builder->buildSerializedNetwork(*network, *config));
         if (not plan) {
             std::cout << "Create serialized engine plan failed" << std::endl;
             return;
@@ -396,13 +402,13 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
         std::cout << "Create engine done" << endl;
     }
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
         cout << "Create execution context failed" << endl;
     }
-    vector<int> io_indexes{engine->getBindingIndex(input_name.c_str())};
+    vector<int64_t> io_indexes{engine->getBindingIndex(input_name.c_str())};
     for (auto o_name : output_names) {
         io_indexes.emplace_back(engine->getBindingIndex(o_name.c_str()));
     }
@@ -412,8 +418,9 @@ void InferenceYoloV3DynamicShape(const string& onnx_path, const string& demo_ima
     ExecuteYoloV3(320, context.get(), io_indexes, engine.get());
     cout << "YoloV3 Inference API demo done" << endl;
 }
-int main(int argc, char* argv[]) {
-    Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
+}  // namespace nvinfer1::samples
+int main(int argc, char *argv[]) {
+    nvinfer1::samples::common::Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
     initLibNvInferPlugins(&logger, "");
     CLI::App app{"App description"};
 
@@ -427,9 +434,9 @@ int main(int argc, char* argv[]) {
     app.add_option("--demo", demo, "Choose which demo to run, available: old/trt_exec/trt_dyn");
     CLI11_PARSE(app, argc, argv);
     if (demo == "trt_exe") {
-        InferenceYoloV3(onnx_path, image_path, engine_path);
+        nvinfer1::samples::InferenceYoloV3(onnx_path, image_path, engine_path);
     } else if (demo == "trt_dyn") {
-        InferenceYoloV3DynamicShape(onnx_path, image_path, engine_path);
+        nvinfer1::samples::InferenceYoloV3DynamicShape(onnx_path, image_path, engine_path);
     } else {
         throw "No such demo called " + demo + ", available: (old/trt_exe/trt_dyn)";
     }

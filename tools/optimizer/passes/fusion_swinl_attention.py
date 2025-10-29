@@ -131,7 +131,7 @@ class FusionSwinLAttention(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend(
             [helper.make_attribute("hidden_size", hidden_size)]
@@ -239,7 +239,7 @@ class FusionSwinLAttention(Fusion):
         fused_node.attribute.extend(
             [helper.make_attribute("out_dims", numpy_helper.to_array(bias).shape[0])]
         )
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fused_node.attribute.extend([helper.make_attribute("W", weight)])
         fused_node.attribute.extend([helper.make_attribute("B", bias)])
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
@@ -380,7 +380,7 @@ class FusionSwinLAttention(Fusion):
         fused_node.attribute.extend(
             [helper.make_attribute("out_dims", bias_arr.shape[0])]
         )
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fused_node.attribute.extend([helper.make_attribute("W", weight)])
         fused_node.attribute.extend(
             [helper.make_attribute("B", numpy_helper.from_array(bias_arr))]

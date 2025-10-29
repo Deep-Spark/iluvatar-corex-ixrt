@@ -14,8 +14,6 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <atomic>
 #include <cstdint>
@@ -25,9 +23,7 @@
 
 #include "NvInferRuntimeCommon.h"
 
-using nvinfer1::ErrorCode;
-using nvinfer1::IErrorRecorder;
-
+namespace nvinfer1::samples::common {
 class SampleErrorRecorder : public IErrorRecorder {
     using errorPair = std::pair<ErrorCode, std::string>;
     using errorStack = std::vector<errorPair>;
@@ -83,3 +79,5 @@ class SampleErrorRecorder : public IErrorRecorder {
 
     errorStack mErrorStack;
 };  // class SampleErrorRecorder
+
+}  // namespace nvinfer1::samples::common

@@ -83,3 +83,54 @@ class FusionLayerInverseSigmoid(Fusion):
         )
         self.nodes_to_add.append(inverse_sigmoid_node)
         self.node_name_to_graph_name[inverse_sigmoid_node.name] = self.this_graph_name
+
+class FusionDinoLayerInverseSigmoid(Fusion):
+    def __init__(self, model: OnnxModel):
+        super().__init__(
+            model, "InverseSigmoid", "Log"
+        )
+
+    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+        """
+           +-----------------+
+           |                 |
+           |                 v
+        [Root] -->  Sub --> Div --> Log
+        """
+        log_parents_nodes = self.model.get_parents(node)
+        if len(log_parents_nodes) != 1 or log_parents_nodes[0].op_type != "Div":
+            return
+        
+        div_node = log_parents_nodes[0]
+        div_parents_nodes = self.model.get_parents(div_node)
+        if len(div_parents_nodes) != 2:
+            return
+
+        sub_node = div_parents_nodes[0]
+        if div_parents_nodes[0].op_type != "Sub":
+            sub_node = div_parents_nodes[1]
+        elif div_parents_nodes[1].op_type != "Sub":
+            return
+        
+        root_input = sub_node.input[1]
+        if div_node.input[0] != root_input and div_node.input[1] != root_input:
+            return
+
+        subgraph_nodes = [node]
+        subgraph_nodes.extend([div_node, sub_node])
+        eps_val = 0.000009999999747378752
+
+        self.nodes_to_remove.extend(subgraph_nodes)
+        inverse_sigmoid_node = helper.make_node(
+            "InverseSigmoid",
+            inputs=[root_input],
+            outputs=[node.output[0]],
+            name=self.model.create_node_name(
+                "InverseSigmoid", name_prefix="InverseSigmoid"
+            ),
+        )
+        inverse_sigmoid_node.attribute.extend(
+            [helper.make_attribute("epsilon", float(eps_val))]
+        )
+        self.nodes_to_add.append(inverse_sigmoid_node)
+        self.node_name_to_graph_name[inverse_sigmoid_node.name] = self.this_graph_name

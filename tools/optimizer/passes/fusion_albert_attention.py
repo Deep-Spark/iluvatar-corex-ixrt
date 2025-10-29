@@ -82,12 +82,11 @@ class FusionAlbertAttention(Fusion):
         """
 
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
-        q_shape = self.model.get_initializer(reshape_q.input[1])
-        if q_shape is None:
+        q_shape_value = self.model.get_constant_value(reshape_q.input[1])
+        if q_shape_value is None:
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        q_shape_value = NumpyHelper.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
             logger.debug(
                 f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size]."
@@ -292,7 +291,7 @@ class FusionAlbertAttention(Fusion):
         fc_node.domain = "com.iluvatar"
         b = NumpyHelper.to_array(bias)
         fc_node.attribute.extend([helper.make_attribute("out_dims", b.shape[0])])
-        fc_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fc_node.attribute.extend([helper.make_attribute("type_id", 1)])
         fc_node.attribute.extend([helper.make_attribute("W", weight)])
         fc_node.attribute.extend([helper.make_attribute("B", bias)])
         fc_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
@@ -318,7 +317,7 @@ class FusionAlbertAttention(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend(
             [helper.make_attribute("hidden_size", hidden_size)]
@@ -429,11 +428,13 @@ class FusionAlbertAttention(Fusion):
 
         is_distill = False
         is_distill_add = False
+        is_mul_split = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
             "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
+            "path5": (["Softmax", "Add", "MatMul"], [0, 0, None])
         }
 
         qk_nodes = None
@@ -445,12 +446,13 @@ class FusionAlbertAttention(Fusion):
                 is_distill = True
             if k == "path4":
                 is_distill_add = True
+            if k == "path5":
+                is_mul_split = True
             break
 
         if qk_nodes is None:
             logger.debug("fuse_attention: failed to match qk path")
             return
-
         add_qk = None
         matmul_qk = None
         where_qk = None
@@ -458,6 +460,8 @@ class FusionAlbertAttention(Fusion):
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
             (_, add_qk, where_qk, matmul_qk) = qk_nodes
+        elif is_mul_split:
+            (_, add_qk, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -470,6 +474,12 @@ class FusionAlbertAttention(Fusion):
                 ["Div", "Transpose", "Reshape", "Add", "MatMul"],
                 [0, 0, 0, 0, None],
             )
+            if q_nodes is None and is_mul_split:
+                q_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
+                    [0, 0, 0, 0, None],
+                )
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
@@ -486,6 +496,13 @@ class FusionAlbertAttention(Fusion):
                 ["Transpose", "Transpose", "Reshape", "Add", "MatMul"],
                 [1, 0, 0, 0, None],
             )
+            if k_nodes is None and is_mul_split:
+                k_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
+                    [1, 0, 0, 0, None],
+                )
+            
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
@@ -521,6 +538,14 @@ class FusionAlbertAttention(Fusion):
                         f"fuse_attention: failed to verify shape inference of {add_qk}"
                     )
                     return
+        elif is_mul_split:
+            _, mask_nodes, _ = self.model.match_parent_paths(
+                add_qk,
+                [
+                    (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze"], [None, 0, 0, 1, 0, 0])
+                ],
+                output_name_to_node,
+            )
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,

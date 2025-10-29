@@ -146,7 +146,7 @@ class FusionVITAttention(Fusion):
             name=attention_node_name,
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend(
             [helper.make_attribute("hidden_size", hidden_size)]
@@ -455,7 +455,7 @@ class FusionTorchvisionVITAttention(Fusion):
             ),
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend([helper.make_attribute("hidden_size", hidden_size)])
         attention_node.attribute.extend([helper.make_attribute("has_mask", 0)])

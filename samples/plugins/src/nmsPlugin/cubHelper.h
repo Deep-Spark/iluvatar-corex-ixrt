@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include <cub/cub.cuh>
 
 #include "nmsKernel.h"

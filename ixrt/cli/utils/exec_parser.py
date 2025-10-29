@@ -80,7 +80,7 @@ def args_parser():
     parser.add_argument(
         "--precision",
         type=str,
-        choices=["int8", "fp16"],
+        choices=["int8", "fp16", "fp32"],
         default="fp16",
         help="Set model inference precision, can be set to fp16 or int8",
     )
@@ -218,6 +218,25 @@ def args_parser():
         "--only_verify_outputs",
         action="store_true",
         help="Used in accuracy verification. When specified, only verify model outputs instead of all layers",
+    )
+    parser.add_argument(
+        "--timingCacheFile",
+        type=str,
+        default=None,
+        help="File path to save timing cache, the algorithm tuning result, to save tuning time for future building engine",
+    )
+    parser.add_argument(
+        "--builderOptimizationLevel",
+        type=int,
+        default=3,
+        help="Set the builder optimization level. (default is 3).\nHigher level allows IxRT to spend more building time for more optimization options.\n"
+             "Valid values include integers from 0 to the maximum optimization level, which is currently 5.",
+     )
+    parser.add_argument(
+        "--watch",
+        type=str,
+        nargs="+",
+        help="Used in accuracy verification. When specified, watch the specified edge from producing until consuming, in order to verify memory crash",
     )
     config = parser.parse_args()
     return config

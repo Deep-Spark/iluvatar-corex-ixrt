@@ -59,9 +59,10 @@ import helpers.tokenization as tokenization
 import numpy as np
 import pycuda.autoinit
 import pycuda.driver as cuda
-import ixrt
 from load_ixrt_plugin import load_ixrt_plugin
 from tqdm import tqdm
+
+import ixrt
 
 TRT_LOGGER = ixrt.Logger(ixrt.Logger.ERROR)
 
@@ -240,16 +241,20 @@ if __name__ == "__main__":
 
         input_shape = (args.batch_size, max_seq_length)
         input_nbytes = ixrt.volume(input_shape) * 4
-        for binding in range(3):
-            context.set_binding_shape(binding, input_shape)
+        context.set_input_shape("input_ids", input_shape)
+        context.set_input_shape("segment_ids", input_shape)
+        context.set_input_shape("input_mask", input_shape)
         assert context.all_binding_shapes_specified
 
         # Allocate device memory for inputs.
         d_inputs = [cuda.mem_alloc(input_nbytes) for binding in range(3)]
 
         # Allocate output buffer by querying the size from the context. This may be different for different input shapes.
+        # h_output = cuda.pagelocked_empty(
+        #     tuple(context.get_binding_shape(binding_idx_offset + 3)), dtype=np.float32
+        # )
         h_output = cuda.pagelocked_empty(
-            tuple(context.get_binding_shape(binding_idx_offset + 3)), dtype=np.float32
+            (args.batch_size, max_seq_length, 2), dtype=np.float32
         )
         d_output = cuda.mem_alloc(h_output.nbytes)
 
@@ -445,10 +450,11 @@ if __name__ == "__main__":
 
             # warm up
             for i in range(20):
-                for binding in range(3):
-                    context.set_binding_shape(
-                        binding, (args.batch_size, max_seq_length)
-                    )
+                context.set_input_shape("input_ids", (args.batch_size, max_seq_length))
+                context.set_input_shape(
+                    "segment_ids", (args.batch_size, max_seq_length)
+                )
+                context.set_input_shape("input_mask", (args.batch_size, max_seq_length))
                 assert context.all_binding_shapes_specified
                 cuda.memcpy_htod_async(
                     d_inputs[0],
@@ -471,8 +477,10 @@ if __name__ == "__main__":
             start_time = time.time()
             output_index = 0
             for input_ids, segment_ids in tqdm(all_token_ids):
-                for binding in range(3):
-                    context.set_binding_shape(binding, input_ids.shape)
+                context.set_input_shape("input_ids", input_ids.shape)
+                context.set_input_shape("segment_ids", input_ids.shape)
+                context.set_input_shape("input_mask", input_ids.shape)
+
                 assert context.all_binding_shapes_specified
 
                 cuda.memcpy_htod_async(d_inputs[0], input_ids.ravel(), stream)

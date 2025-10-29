@@ -1075,4 +1075,3 @@ class FusionAlbertEmbedLayerNormalization(Fusion):
         self.nodes_to_remove.extend(subgraph_nodes_remove)
         
         self.nodes_to_add.append(emblayernorm_node)
-        self.node_name_to_graph_name[emblayernorm_node.name] = self.this_graph_name

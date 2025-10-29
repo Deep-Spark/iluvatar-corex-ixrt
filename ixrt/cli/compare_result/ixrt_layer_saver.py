@@ -13,8 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-
-import dataclasses
+from __future__ import annotations
+from dataclasses import dataclass
 import os
 import warnings
 from collections import OrderedDict, defaultdict
@@ -27,30 +27,11 @@ import numpy as np
 import ixrt
 from ixrt import LayerType
 from ixrt.cli.utils import check_cuda_errors
-from ixrt.hook.utils import copy_ixrt_io_tensors_as_np, copy_ixrt_tensor_as_np
+from ixrt.hook.utils import copy_ixrt_tensor_as_np
 
 from .infer_result import InferResult
 from .utils import get_edge_path
-
-
-def copy_attrs_to_object(obj):
-    class GeneratedObject:
-        pass
-
-    # 获取对象的所有属性
-    obj_attrs = {i: getattr(obj, i) for i in dir(obj) if not i.startswith("_")}
-
-    # 创建属性的拷贝
-    obj_attrs_copy = obj_attrs
-    print(obj_attrs_copy)
-
-    result = GeneratedObject()
-    # 将属性的拷贝转换为对象的属性
-    for key, value in obj_attrs_copy.items():
-        setattr(result, key, value)
-    return result
-
-
+from .memory_watch import MemoryDiagnosisTool
 class Node:
     def __init__(self, type, name, input, output):
         self.type = type
@@ -71,13 +52,19 @@ class RuntimeGraph:
         self.node_table = defaultdict(Node)
         self.edge_table = defaultdict(Edge)
 
-
+@dataclass
+class MemoryCrashInfo:
+    tensor_name: str
+    producer: str
+    consumer_found_crashed: str
 class IxrtLayerSaver:
-    def __init__(self, ixrt_root="ixrt_layer_output"):
+    def __init__(self, ixrt_root="ixrt_layer_output", tensors_to_watch=None):
         self.ixrt_root = ixrt_root
         self.inference_result = OrderedDict()
         self.error_recorder = []
         self.runtime_ir = RuntimeGraph()
+        self.mem_diagnosis = MemoryDiagnosisTool(tensors_to_watch)
+        self.edges_with_memory_crash = []
 
     def save_layer_output_hook(self, info: ixrt.ExecutionContextInfo):
         check_cuda_errors(cudart.cudaDeviceSynchronize())
@@ -89,7 +76,6 @@ class IxrtLayerSaver:
             info.input_names,
             info.input_tensors,
             info.nb_inputs,
-            info.op_name,
             True,
         )
         self.save_tensors(
@@ -97,22 +83,23 @@ class IxrtLayerSaver:
             info.output_names,
             info.output_tensors,
             info.nb_outputs,
-            info.op_name,
             False,
         )
-
-    def save_tensors(self, op_name, names, tensors, n, producer, is_input):
+        self.mem_diagnosis.watch(info.op_name)
+    def save_tensors(self, op_name, names, tensors, n, is_input):
         for i in range(n):
             edge_name = names[i]
             tensor = tensors[i]
             arr = copy_ixrt_tensor_as_np(tensor)
             filename = get_edge_path(self.ixrt_root, edge_name)
             if not is_input:
+                self.mem_diagnosis.record_since_producing(edge_name, tensor, op_name)
                 np.save(filename, arr)
                 self.inference_result[edge_name] = InferResult(
-                    producer_node=producer, edge_name=edge_name, saved_path=filename
+                    producer_node=op_name, edge_name=edge_name, saved_path=filename
                 )
-
+            else:
+                self.mem_diagnosis.stop_at_consumer(op_name)
     def verify_inputs(self, op_name, names, tensors):
         for edge_name, tensor in zip(names, tensors):
             filename = get_edge_path(self.ixrt_root, edge_name)
@@ -121,8 +108,7 @@ class IxrtLayerSaver:
                 previous_arr = np.load(filename)
                 if not np.allclose(previous_arr, arr):
                     producer_op = self.inference_result[edge_name].producer_node
-                    msg = f"{producer_op} --> {edge_name} --> {op_name}, input of lateral operator differs with output of previous operator, memory crash may ocurred"
-                    self.error_recorder.append(msg)
+                    self.edges_with_memory_crash.append(MemoryCrashInfo(edge_name, producer_op, op_name))
 
     def _collect_info(self, info: ixrt.ExecutionContextInfo):
         self.runtime_ir.node_table[info.op_name] = Node(

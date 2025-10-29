@@ -12,15 +12,14 @@
 
 
 ### Advanced samples
-| Sample                            | Language | Format | Description                                           |
-|-----------------------------------|---|---|-------------------------------------------------------|
-| [sampleHideDataTransfer](sampleHideDataTransfer) | C++ | ONNX | Hide data transfer with ResNet18 ONNX |
-| [sampleAPIToResnet](sampleAPIToResnet) | C++ | ONNX | Construct a ResNet18 network with IxRT custom layer API |
-| [sampleAPIToInt8Resnet](sampleAPIToInt8Resnet) | C++ | ONNX | Construct an int8 ResNet18 network with IxRT custom layer API |
-| [sampleBert](sampleBert) | Python | ONNX | Construct an int8 and fp16 Bert with IxRT custom layer API |
-| [sampleQuant](sampleQuant) | C++ | ONNX | Demonstrate how to useIxRT deploy tool to quantize an onnx |
-| [python](python) | Python | ONNX | IXRT Quantization and Example Tool Using Python API |
-| [plugins](plugins) | C++ | ONNX | The plugin library provided by IxRT, which includes the NMSplugin and YOLOdecoder plugin |
+| Sample                                           | Language | Format | Description                                                                              |
+|--------------------------------------------------|----------|--------|------------------------------------------------------------------------------------------|
+| [sampleTypedNetwork](TypedNetwork)                 | C++      | API    | Demonstrate strongly/weakly API usage                                                    |
+| [sampleCondition](sampleCondition)                 | C++      | API    | Build network with IxRT conditional layer API                                            |
+| [sampleHideDataTransfer](sampleHideDataTransfer) | C++      | ONNX   | Hide data transfer with ResNet18 ONNX                                                    |
+| [sampleBert](sampleBert)                         | Python   | ONNX   | Construct an int8 and fp16 Bert with IxRT custom layer API                               |
+| [python](python)                                 | Python   | ONNX   | IXRT Quantization and Example Tool Using Python API                                      |
+| [plugins](plugins)                               | C++      | ONNX   | The plugin library provided by IxRT, which includes the NMSplugin and YOLOdecoder plugin |
 
 
 

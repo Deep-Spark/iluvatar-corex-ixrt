@@ -16,6 +16,6 @@
 
 SET(SAMPLE_SOURCES sampleYoloX.cc)
 list(APPEND SAMPLE_SOURCES ${PLUGIN_SRC})
-set(EXTRA_LIBS common)
+set(EXTRA_LIBS oss_common)
 set(PLUGINS_NEEDED OFF)
 include(../CMakeSamplesTemplate.txt)

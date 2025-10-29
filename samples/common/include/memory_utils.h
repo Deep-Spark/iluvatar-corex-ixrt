@@ -14,28 +14,11 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <memory>
 
 #include "cuda_runtime.h"
-struct ObjectDeleter {
-    template <typename T>
-    void operator()(T* obj) const {
-        delete obj;
-    }
-};
-
-struct ArrayDeleter {
-    template <typename T>
-    void operator()(T* p) const {
-        delete[] p;
-    }
-};
-template <typename T>
-using UniquePtr = std::unique_ptr<T, ObjectDeleter>;
-
+namespace nvinfer1::samples::common {
 static auto StreamDeleter = [](cudaStream_t* pStream) {
     if (pStream) {
         cudaStreamDestroy(*pStream);
@@ -72,3 +55,19 @@ inline std::unique_ptr<cudaEvent_t, decltype(EventDeleter)> makeCudaEvent(bool t
     }
     return p_event;
 }
+struct ObjectDeleter {
+    template <typename T>
+    void operator()(T* obj) const {
+        delete obj;
+    }
+};
+struct ArrayDeleter {
+    template <typename T>
+    void operator()(T* p) const {
+        delete[] p;
+    }
+};
+
+template <typename T>
+using UPtr = std::unique_ptr<T>;
+}  // namespace nvinfer1::samples::common

@@ -14,8 +14,6 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #include "image_io.h"
 
 #include <iostream>
@@ -29,7 +27,8 @@
 #include <numeric>
 
 #include "stb_image_resize.h"
-using namespace nvinfer1;
+
+namespace nvinfer1::samples::common {
 // image channel first CHW
 void ImageRGB2BGR(int w, int h, uint8_t* data) {
     int i;
@@ -400,3 +399,4 @@ void LoadImageBuffer(const std::string& file_name, const nvinfer1::Dims& dims, f
     }
     stbi_image_free(odata);
 }
+}  // namespace nvinfer1::samples::common

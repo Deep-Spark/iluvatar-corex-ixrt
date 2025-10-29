@@ -27,6 +27,10 @@ from onnx_model_conformer import conformerOnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_yolo import YoloOnnxModel
 from onnx_model_PVT import PVTOnnxModel
+from onnx_model_rnn import RnnOnnxModel
+from onnx_model_cosyvoice import cosyvoiceOnnxModel
+from onnx_model_QA_Clip import QAClipOnnxModel
+from onnx_model_gdino import GroundingDinoOnnxModel
 
 from onnxsim import simplify
 from passes.fusion_options import FusionOptions
@@ -43,7 +47,11 @@ MODEL_TYPES = {
     "vit": (BertOnnxModel, None, "pytorch", 1),
     "conformer": (conformerOnnxModel, None, "pytorch", 1),
     "PVT": (PVTOnnxModel, None, "pytorch", 1),
-    "omdet": (BertOnnxModel, None, "pytorch", 1)
+    "omdet": (BertOnnxModel, None, "pytorch", 1),
+    "rnn":(RnnOnnxModel, None, "pytorch", 1),
+    "cosyvoice": (cosyvoiceOnnxModel, None, "pytorch", 1),
+    "QA_Clip": (QAClipOnnxModel, None, "pytorch", 1),
+    "gdino": (GroundingDinoOnnxModel, None, "pytorch", 1),
 }
 
 
@@ -193,7 +201,7 @@ def args_parser():
         "--model_type",
         type=str,
         default="bert",
-        choices=["bert", "swint", "roformer", "t5", "yolo", "gpt2", "vit", "conformer","PVT","omdet"],
+        choices=["bert", "swint", "roformer", "t5", "yolo", "gpt2", "vit", "conformer","PVT","omdet", "rnn", "cosyvoice", "QA_Clip", "gdino"],
         help="Which kind of model to optimize",
     )
     parser.add_argument(

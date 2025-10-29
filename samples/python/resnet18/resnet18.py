@@ -36,11 +36,12 @@ import time
 import cuda.cudart as cudart
 import cv2
 import numpy as np
-import ixrt
 import torch
+from utils.imagenet_labels import labels as imagenet_labels
+
+import ixrt
 from ixrt import Dims
 from ixrt.utils import topk
-from utils.imagenet_labels import labels as imagenet_labels
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
@@ -120,19 +121,17 @@ def show_cls_result(result, k=5):
 
 def test_build_engine_trtapi(config):
     onnx_model = os.path.join(config.model_path, "resnet18.onnx")
-    quant_file = os.path.join(config.model_path, "quantized_resnet18.json")
     IXRT_LOGGER = ixrt.Logger(ixrt.Logger.WARNING)
     builder = ixrt.Builder(IXRT_LOGGER)
     EXPLICIT_BATCH = 1 << (int)(ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     network = builder.create_network(EXPLICIT_BATCH)
     build_config = builder.create_builder_config()
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
+    parser.parse_from_file(onnx_model)
 
     if config.precision == "int8":
-        parser.parse_from_files(onnx_model, quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
     else:
-        parser.parse_from_file(onnx_model)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
 
     plan = builder.build_serialized_network(network, build_config)
@@ -319,7 +318,6 @@ def test_resnet18_trtapi_multicontext(config):
 
 def test_build_engine_trtapi_dynamicshape(config):
     onnx_model = os.path.join(config.model_path, "resnet18.onnx")
-    quant_file = os.path.join(config.model_path, "quantized_resnet18.json")
     IXRT_LOGGER = ixrt.Logger(ixrt.Logger.WARNING)
     builder = ixrt.Builder(IXRT_LOGGER)
     EXPLICIT_BATCH = 1 << (int)(ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
@@ -331,12 +329,11 @@ def test_build_engine_trtapi_dynamicshape(config):
     )
     build_config.add_optimization_profile(profile)
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
+    parser.parse_from_file(onnx_model)
 
     if config.precision == "int8":
-        parser.parse_from_files(onnx_model, quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
     else:
-        parser.parse_from_file(onnx_model)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
 
     # set dynamic
@@ -514,12 +511,11 @@ def test_build_engine_trtapi_dynamicshape_multiprofile(config):
     build_config.add_optimization_profile(profile_2)
     build_config.add_optimization_profile(profile)
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
+    parser.parse_from_file(onnx_model)
 
     if config.precision == "int8":
-        parser.parse_from_files(onnx_model, quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
     else:
-        parser.parse_from_file(onnx_model)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
 
     # set dynamic

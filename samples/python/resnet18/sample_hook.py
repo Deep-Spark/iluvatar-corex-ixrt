@@ -23,12 +23,13 @@ import time
 import cuda.cudart as cudart
 import cv2
 import numpy as np
-import ixrt
 import torch
+from utils.imagenet_labels import labels as imagenet_labels
+
+import ixrt
 from ixrt import Dims
 from ixrt.hook.utils import copy_ixrt_io_tensors_as_np
 from ixrt.utils import topk
-from utils.imagenet_labels import labels as imagenet_labels
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..")
 
@@ -133,12 +134,8 @@ def load_dynamic_engine(config):
         assert engine
         context = engine.create_execution_context()
         assert context
-        context.register_hook(
-            "simple_print", callback, ixrt.ExecutionHookFlag.POSTRUN
-        )
-        context.register_hook(
-            "prerun_hook", callback1, ixrt.ExecutionHookFlag.PRERUN
-        )
+        context.register_hook("simple_print", callback, ixrt.ExecutionHookFlag.POSTRUN)
+        context.register_hook("prerun_hook", callback1, ixrt.ExecutionHookFlag.PRERUN)
         # context.deregister_hook("simple_print")
         # context.deregister_hook("prerun_hook")
         # set_dynamic shape

@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include "nmsPlugin.h"
 
 #include <cuda_fp16.h>

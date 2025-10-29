@@ -14,13 +14,13 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <cassert>
 #include <iostream>
 
 #include "NvInfer.h"
+
+namespace nvinfer1::samples::common {
 using Severity = nvinfer1::ILogger::Severity;
 class Logger : public nvinfer1::ILogger {
    public:
@@ -43,7 +43,7 @@ class Logger : public nvinfer1::ILogger {
     //!
     void log(Severity severity, const char* msg) noexcept override {
         if (severity <= mReportableSeverity) {
-            std::cout << severityPrefix(mReportableSeverity) << "[IXRT] " << msg << std::endl;
+            std::cout << severityPrefix(severity) << "[IXRT] " << msg << std::endl;
         }
     }
 
@@ -88,3 +88,5 @@ class Logger : public nvinfer1::ILogger {
 
     Severity mReportableSeverity;
 };  // class Logger
+
+}  // namespace nvinfer1::samples::common

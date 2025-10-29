@@ -43,6 +43,9 @@ class FusionFastGelu(Fusion):
         if self.fuse_3(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
+        if self.fuse_4(tanh_node, input_name_to_nodes, output_name_to_node):
+            return
+
     def fuse_1(
         self, tanh_node, input_name_to_nodes, output_name_to_node
     ) -> Optional[bool]:
@@ -161,7 +164,7 @@ class FusionFastGelu(Fusion):
         fused_node.domain = "com.iluvatar"
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
         fused_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
@@ -283,7 +286,7 @@ class FusionFastGelu(Fusion):
         fused_node.domain = "com.iluvatar"
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
         fused_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
@@ -414,7 +417,143 @@ class FusionFastGelu(Fusion):
         fused_node.domain = "com.iluvatar"
         fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
         fused_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
-        fused_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
+        self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        return True
+
+    def fuse_4(
+        self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict
+    ) -> Optional[bool]:
+        """
+        OpenAI's gelu implementation, also used in Megatron:
+           Gelu(x) = x * 0.5 * (1.0 + torch.tanh(0.79788456 * (x + 0.044715 * x * x * x)))
+
+        Fuse subgraph into a FastGelu node:
+            +--------------------------------------------+ 
+            |-----------------+                          | 
+            |                 |                          |
+            |---------+       |                          |
+            |         |       |                          |
+            |         v       v                          v 
+          [root] --> Mul  --> Mul--> Mul(B=0.0447) --> Add --> Mul(B=0.79788) --> Tanh --> Add(B=1) --> Mul ---> Mul (B=0.5) -->
+            |                                                                                ^
+            |                                                                                |
+            +--------------------------------------------------------------------------------+
+        """
+        if tanh_node.output[0] not in input_name_to_nodes:
+            return
+
+        children = input_name_to_nodes[tanh_node.output[0]]
+        if len(children) != 1 or children[0].op_type != "Add":
+            return
+        add_after_tanh = children[0]
+
+        if not self.model.has_constant_input(add_after_tanh, 1.0):
+            return
+
+        if add_after_tanh.output[0] not in input_name_to_nodes:
+            return
+        children = input_name_to_nodes[add_after_tanh.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+        mul_second_last = children[0]
+
+        children = input_name_to_nodes[mul_second_last.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+
+        mul_half = children[0]
+
+        root_input = mul_second_last.input[0]
+        if add_after_tanh.output[0] == root_input:
+            root_input = mul_second_last.input[1]
+
+        mul_7978 = self.model.match_parent(
+            tanh_node, "Mul", 0, output_name_to_node
+        )
+        if mul_7978 is None:
+            return
+        k = self.model.find_constant_input(mul_7978, 0.7978, delta=0.0001)
+        if k < 0:
+            return
+
+        add_before_mul_7879 = self.model.match_parent(
+            mul_7978, "Add", 0 if k == 1 else 1, output_name_to_node
+        )
+        if add_before_mul_7879 is None:
+            return
+
+        if add_before_mul_7879.input[0] == root_input:
+            another = 1
+        elif add_before_mul_7879.input[1] == root_input:
+            another = 0
+        else:
+            return
+
+        mul_0447 = self.model.match_parent(
+            add_before_mul_7879, "Mul", another, output_name_to_node
+        )
+        if mul_0447 is None:
+            return
+        m = self.model.find_constant_input(mul_0447, 0.0447, delta=0.0001)
+        if m < 0:
+            return
+
+        mul_before_0447 = self.model.match_parent(
+            mul_0447, "Mul", 0 if m == 1 else 1, output_name_to_node
+        )
+        if mul_before_0447 is None:
+            return
+
+        if mul_before_0447.input[0] == root_input:
+            another = 1
+        elif mul_before_0447.input[1] == root_input:
+            another = 0
+        else:
+            return
+
+        mul_first = self.model.match_parent(
+            mul_before_0447, "Mul", another, output_name_to_node
+        )
+        if mul_first is None:
+            return
+
+        if mul_first.input[0] != root_input:
+            return
+        if mul_first.input[1] != root_input:
+            return
+
+        subgraph_nodes = [
+            mul_first,
+            mul_before_0447,
+            mul_0447,
+            add_before_mul_7879,
+            mul_7978,
+            tanh_node,
+            add_after_tanh,
+            mul_second_last,
+            mul_half,
+        ]
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_half.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
+            return
+
+        self.nodes_to_remove.extend(subgraph_nodes)
+        fused_node = helper.make_node(
+            "CustomGeluPluginDynamic_IxRT",
+            inputs=[root_input],
+            outputs=mul_half.output,
+            name=self.model.create_node_name("CustomGeluPluginDynamic_IxRT"),
+        )
+        fused_node.domain = "com.iluvatar"
+        fused_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
+        fused_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
+        fused_node.attribute.extend([helper.make_attribute("type_id", 1)])
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True

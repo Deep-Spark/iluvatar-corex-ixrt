@@ -15,5 +15,5 @@
 #
 
 aux_source_directory(. SAMPLE_SOURCES)
-set(EXTRA_LIBS common pthread)
+set(EXTRA_LIBS oss_common pthread)
 include(../CMakeSamplesTemplate.txt)

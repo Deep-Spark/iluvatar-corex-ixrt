@@ -10,10 +10,7 @@ Follow steps from IxRT's official document.
 ## Running the sample
 0. Quantization
 With the help of IxRT deploy tool, quantize it to INT8 QDQ model
-```bash
-DATADIR=$(realpath data/yolov3)
-python3 samples/sampleYoloV3/yolov3_qdq.py --model ${DATADIR}/yolov3_without_decoder.onnx --save_model_path ${DATADIR}/yolov3_without_decoder_qdq.onnx
-```
+
 1. Modify the YoloV3 onnx to specified needs
 
 Assume you are in the root of IxRT oss, execute commands below:
@@ -30,10 +27,13 @@ Arguments:
 - `--dynamic`, if specified, use dynamic shape for H/W of the YoloV3 input
 
 2. Compile the samples in IxRT OSS directory
-If you haven't compiled the IxRT samples, following command helps you compile all samples
+
+If you haven't compiled the IxRT samples, following command helps you compile all samples.
+Refer to the README section of ixrt-oss.
+
 ```
-cd path-to-ixrt-oss
-cmake -B build
+cd ixrt-oss
+cmake -B build -DIXRT_HOME=ixrt-oss/IxRT
 cmake --build build -j
 ```
 

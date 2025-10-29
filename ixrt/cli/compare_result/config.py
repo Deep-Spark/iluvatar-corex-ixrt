@@ -76,6 +76,7 @@ def create_acc_comp_config(exec_config):
     result.ort_cpu = exec_config.ort_cpu
     result.inject_tensors = {}
     result.only_verify_outputs = exec_config.only_verify_outputs
+    result.tensors_to_watch = exec_config.watch
     os.makedirs(result.ixrt, exist_ok=True)
     os.makedirs(result.ort, exist_ok=True)
     parse_inject_tensors(exec_config, result)

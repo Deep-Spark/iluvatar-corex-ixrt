@@ -22,7 +22,7 @@ from logging import getLogger
 from typing import Dict
 
 import numpy as np
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 
 from .fusion_base import Fusion
 from .onnx_model import OnnxModel
@@ -210,6 +210,199 @@ class FusionLayerNormalization(Fusion):
             )
             self.nodes_to_add.append(normalize_node)
             self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
+
+class FusionLayerNormalizationNHWC(Fusion):
+    def __init__(self, model: OnnxModel, hidden_size=1024):
+        self.hidden_size = hidden_size
+        super().__init__(model, "LayerNormalization", "ReduceMean")
+
+    def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+        """
+        Fuse Layer Normalization subgraph into three node transpose --> LayerNormalization --> transpose:
+              +----------------------+
+              |                      |
+              |                      v
+          [Root] --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div  --> Mul   --> Add
+                     (axis=2 or -1)  |      (Y=2)   (axis=2 or -1)  (E-6 or E-12 or 0) ^     (dims=3)   (dims=3)
+                                     |                                                 |
+                                     +-------------------------------------------------+
+
+        """
+        children = self.model.get_children(node, input_name_to_nodes)
+        if len(children) == 0 or len(children) > 2:
+            return
+
+        root_input = node.input[0]
+
+        if children[0].op_type != "Sub" or children[0].input[0] != root_input:
+            return
+
+        div_node = None
+        for child in children:
+            div_node = self.model.find_first_child_by_type(
+                child, "Div", input_name_to_nodes, recursive=False
+            )
+            if div_node is not None:
+                break
+        if div_node is None:
+            return
+
+        path_id, parent_nodes, _ = self.model.match_parent_paths(
+            div_node,
+            [
+                (["Sqrt", "Add", "ReduceMean", "Pow", "Sub"], [1, 0, 0, 0, 0]),
+            ],
+            output_name_to_node,
+        )
+        if path_id < 0:
+            return
+
+        sub_node = parent_nodes[-1]
+        if sub_node not in children:
+            return
+
+        second_add_node = parent_nodes[1]
+        i, add_weight = self.model.get_constant_input(second_add_node)
+        if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
+            logger.warning(f"epsilon value is not expeced: {add_weight}")
+            return
+
+        pow_node = parent_nodes[3]
+        if not self.model.find_constant_input(pow_node, 2.0) == 1:
+            return
+
+        mul_node = input_name_to_nodes[div_node.output[0]][0]
+        is_not_have_mul_and_add = False
+        is_not_have_mul_and_add_lst_node = None
+        # deal with special case : layernorm do not have mul and add
+        if mul_node.op_type != "Mul" and mul_node.op_type == "MatMul":
+            is_not_have_mul_and_add = True
+            is_not_have_mul_and_add_lst_node = div_node
+        elif mul_node.op_type != "Mul":
+            return
+
+        if is_not_have_mul_and_add:
+            last_add_node = is_not_have_mul_and_add_lst_node
+            if self.hidden_size == 0:
+                print(
+                    "[Error] Please add '--hidden_size' and '--num_head' to fuse layernorm ..."
+                )
+                exit(0)
+
+            subgraph_nodes = [node]
+            subgraph_nodes.extend(children)
+            subgraph_nodes.extend(parent_nodes[:-1])
+            subgraph_nodes.extend([last_add_node])
+            if len(subgraph_nodes) == 7:
+                self.nodes_to_remove.extend(subgraph_nodes)
+            else:
+                return
+
+            norm_name = self.model.create_node_name(
+                "LayerNormalization", name_prefix="LayerNorm"
+            )
+            np_weights = np.ones((self.hidden_size)).astype(np.float32)
+            np_weights_name = norm_name + "_weights"
+            weights_tensor = helper.make_tensor(
+                np_weights_name, TensorProto.FLOAT, np_weights.shape, np_weights
+            )
+            np_bias = np.zeros((self.hidden_size)).astype(np.float32)
+            np_bias_name = norm_name + "_bias"
+            bias_tensor = helper.make_tensor(
+                np_bias_name, TensorProto.FLOAT, np_bias.shape, np_bias
+            )
+            self.model.add_initializer(weights_tensor)
+            self.model.add_initializer(bias_tensor)
+            normalize_node = helper.make_node(
+                "LayerNormalization",
+                inputs=[node.input[0], np_weights_name, np_bias_name],
+                outputs=[last_add_node.output[0]],
+                name=norm_name,
+            )
+            normalize_node.attribute.extend(
+                [helper.make_attribute("epsilon", float(add_weight))]
+            )
+            self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
+        else:
+            last_add_node = input_name_to_nodes[mul_node.output[0]][0]
+            if last_add_node.op_type != "Add":
+                return
+
+            subgraph_nodes = [node]
+            subgraph_nodes.extend(children)
+            subgraph_nodes.extend(parent_nodes[:-1])
+
+            subgraph_nodes.extend([last_add_node, mul_node, div_node])
+            if not self.model.is_safe_to_fuse_nodes(
+                subgraph_nodes,
+                last_add_node.output,
+                input_name_to_nodes,
+                output_name_to_node,
+            ):
+                logger.debug(f"It is not safe to fuse LayerNormalization node. Skip")
+                return
+
+            weight_input = mul_node.input[
+                1 - self.model.input_index(div_node.output[0], mul_node)
+            ]
+            if not self.model.is_constant_with_specified_dimension(
+                weight_input, 3, "layernorm weight"
+            ):
+                return
+            weight = self.model.get_initializer(weight_input)
+            new_weight = numpy_helper.from_array(np.squeeze(numpy_helper.to_array(weight)), weight_input)
+            weight.CopyFrom(new_weight)  
+
+            bias_input = last_add_node.input[
+                1 - self.model.input_index(mul_node.output[0], last_add_node)
+            ]
+            if not self.model.is_constant_with_specified_dimension(
+                bias_input, 3, "layernorm bias"
+            ):
+                return
+            bias = self.model.get_initializer(bias_input)
+            new_bias = numpy_helper.from_array(np.squeeze(numpy_helper.to_array(bias)), bias_input)
+            bias.CopyFrom(new_bias)
+
+            self.nodes_to_remove.extend(subgraph_nodes)
+            first_transpose_node_name = self.model.create_node_name(
+                    "Transpose", name_prefix="Transpose"
+                )
+            first_transpose_node = helper.make_node(
+                "Transpose",
+                inputs=[node.input[0]],
+                outputs=[first_transpose_node_name + "output"],
+                name=first_transpose_node_name,
+                perm=[0, 2, 3, 1],
+            )
+            normalize_node_name = self.model.create_node_name(
+                    "LayerNormalization", name_prefix="LayerNorm"
+            )
+            normalize_node = helper.make_node(
+                "LayerNormalization",
+                inputs=[first_transpose_node.output[0], weight_input, bias_input],
+                outputs=[normalize_node_name + "output"],
+                name=normalize_node_name,
+            )
+            normalize_node.attribute.extend(
+                [helper.make_attribute("epsilon", float(add_weight))]
+            )
+            last_transpose_node_name = self.model.create_node_name(
+                    "Transpose", name_prefix="Transpose"
+                )
+            last_transpose_node = helper.make_node(
+                "Transpose",
+                inputs=[normalize_node.output[0]],
+                outputs=[last_add_node.output[0]],
+                name=last_transpose_node_name,
+                perm=[0, 3, 1, 2],
+            )
+            
+            self.nodes_to_add.extend([first_transpose_node, normalize_node, last_transpose_node])
+            self.node_name_to_graph_name[first_transpose_node.name] = self.this_graph_name
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
+            self.node_name_to_graph_name[last_transpose_node.name] = self.this_graph_name
 
 
 class FusionLayerNormalizationKeras(Fusion):

@@ -13,15 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 #
-
-import os
-import sys
-
 import numpy as np
-import torch
-from ixrt.deploy.api import *
-from torch.utils.data import DataLoader, TensorDataset
-
 
 def generate_data(data_name, data_shape, data_types):
     if data_name not in data_types.keys():
@@ -44,8 +36,17 @@ def generate_data(data_name, data_shape, data_types):
             raise ValueError(f"unsupported data type {data_type}")
     return np_data
 
+def generate_output_buffers(data_bindings):
+    data_buffer = {}
+    for data_binding in data_bindings:
+        _name = data_binding["name"]
+        _shape = data_binding["shape"]
+        _size = data_binding["nbytes"]
+        _dtype = data_binding["dtype"]
+        data_buffer[_name] = np.zeros(_size // _dtype.itemsize).astype(_dtype)
+    return data_buffer
 
-def generate_buffers(data_bindings, custom_buffers=None):
+def generate_input_buffers(data_bindings, custom_buffers=None):
     data_buffer = {}
     for data_binding in data_bindings:
         _name = data_binding["name"]
@@ -66,6 +67,9 @@ def generate_buffers(data_bindings, custom_buffers=None):
 
 
 def generate_dummy_calibration_loader(data_shapes, data_types):
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+
     fake_data_list = []
     for data_name, data_shape in data_shapes.items():
         fake_data = generate_data(data_name, data_shape, data_types)
@@ -84,9 +88,10 @@ def generate_dummy_calibration_loader(data_shapes, data_types):
 def generate_quantified_model(
     onnx_model, data_shapes, data_types, save_quant_onnx_path, save_quant_params_path
 ):
+    from ixrt.deploy.api import static_quantize
+
     calibration_dataloader = generate_dummy_calibration_loader(data_shapes, data_types)
 
-    device = 0 if torch.cuda.is_available() else "cpu"
     static_quantize(
         onnx_model,
         calibration_dataloader,
@@ -94,7 +99,6 @@ def generate_quantified_model(
         analyze=False,
         save_quant_onnx_path=save_quant_onnx_path,
         save_quant_params_path=save_quant_params_path,
-        data_preprocess=lambda x: x[0].to(device),
-        device=device,
+        data_preprocess=lambda x: x[0].cuda(),
     )
     del calibration_dataloader

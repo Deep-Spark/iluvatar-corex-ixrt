@@ -14,9 +14,6 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
-
 #include "postprocess_utils.h"
 
 #include <algorithm>
@@ -29,7 +26,8 @@
 
 #include "coco_labels.h"
 #include "imagenet_labels.h"
-using namespace nvinfer1;
+
+namespace nvinfer1::samples::common {
 const int32_t kYoloV3CellSize = 6;
 const int32_t kRetinafaceLdmSize = 10;
 
@@ -522,3 +520,5 @@ void SaveRetinaFaceDetectionResult(const std::string output_dir, const std::stri
         ofs << lt_x << " " << lt_y << " " << w << " " << h << " " << score << std::endl;
     }
 }
+
+}  // namespace nvinfer1::samples::common

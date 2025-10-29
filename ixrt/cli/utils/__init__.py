@@ -19,5 +19,4 @@ from .data_generate import *
 from .exec_parser import *
 from .io_info import *
 from .quant import dequant, quant
-from .supported_info import process_supported_ops_info
 from .tensor import add_padding, remove_padding

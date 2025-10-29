@@ -26,8 +26,9 @@ import time
 import cuda.cudart as cudart
 import cv2
 import numpy as np
-import ixrt
 from imagenet_labels import labels
+
+import ixrt
 from ixrt.utils import topk
 
 
@@ -104,9 +105,7 @@ def basic_block(
     conv1.stride_nd = (stride, stride)
     conv1.padding_nd = (1, 1)
 
-    relu1 = network.add_activation(
-        conv1.get_output(0), type=ixrt.ActivationType.RELU
-    )
+    relu1 = network.add_activation(conv1.get_output(0), type=ixrt.ActivationType.RELU)
     assert relu1
 
     conv2 = network.add_convolution_nd(
@@ -167,9 +166,7 @@ def construct_network(network, weight):
     conv1.stride_nd = (2, 2)
     conv1.padding_nd = (3, 3)
 
-    relu1 = network.add_activation(
-        conv1.get_output(0), type=ixrt.ActivationType.RELU
-    )
+    relu1 = network.add_activation(conv1.get_output(0), type=ixrt.ActivationType.RELU)
     assert relu1
 
     pool1 = network.add_pooling_nd(
@@ -260,9 +257,9 @@ def execute(config):
         outputs = []
         allocations = []
         for i in range(engine.num_bindings):
-            name = engine.get_binding_name(i)
-            dtype = engine.get_binding_dtype(i)
-            shape = engine.get_binding_shape(i)
+            name = engine.get_tensor_name(i)
+            dtype = engine.get_tensor_dtype(name)
+            shape = engine.get_tensor_shape(name)
 
             size = np.dtype(ixrt.nptype(dtype)).itemsize
             for s in shape:
@@ -278,10 +275,11 @@ def execute(config):
                 "nbytes": size,
             }
             allocations.append(allocation)
-            if engine.binding_is_input(i):
+            if engine.get_tensor_mode(name) == ixrt.TensorIOMode.INPUT:
                 inputs.append(binding)
             else:
                 outputs.append(binding)
+            context.set_tensor_address(engine.get_tensor_name(i), allocation)
 
         # Prepare the output data
         output = np.zeros(outputs[0]["shape"], outputs[0]["dtype"])
@@ -303,7 +301,12 @@ def execute(config):
             cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
         )
         assert err == cudart.cudaError_t.cudaSuccess
-        context.execute_v2(allocations)
+
+        err, stream = cudart.cudaStreamCreate()
+        assert err == cudart.cudaError_t.cudaSuccess
+        context.execute_async_v3(stream)
+        cudart.cudaStreamSynchronize(stream)
+
         assert outputs[0]["nbytes"] == output.nbytes
         (err,) = cudart.cudaMemcpy(
             output,

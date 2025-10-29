@@ -42,3 +42,7 @@ python3 ptq_classification.py --model resnet18 --data_path /path/to/imagenet/val
 python3 ptq_classification.py --model /path/to/resnet18.onnx --data_path /path/to/imagenet/val
 
 ```
+
+## 常见问题
+
+如果出现因为Pytorch版本问题而出现不能识别onnx模型带有 . 符号边的错误问题，请先使用 /deploy/backend/torch/onnx.py 文件中的rename_model_edges 方法处理onnx模型.

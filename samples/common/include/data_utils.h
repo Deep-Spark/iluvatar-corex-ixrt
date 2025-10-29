@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #pragma once
 #include <iostream>
 #include <memory>
@@ -23,7 +22,7 @@
 #include "NvInferRuntimeCommon.h"
 #include "buffer_utils.h"
 #include "cuda_runtime.h"
-using namespace nvinfer1::samples::common;
+namespace nvinfer1::samples::common {
 template <typename AllocFunc, typename FreeFunc>
 class Buffer {
    public:
@@ -151,3 +150,5 @@ using HostBuffer = Buffer<HostAllocator, HostFree>;
 using HostPinnedBuffer = Buffer<HostPinnedAllocator, HostPinnedFree>;
 
 void SetRandomData(float* data, uint64_t size);
+
+}  // namespace nvinfer1::samples::common

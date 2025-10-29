@@ -37,10 +37,15 @@ CUDA_ADD_EXECUTABLE(${TARGET_NAME}
 
 
 target_link_libraries(${TARGET_NAME} PUBLIC
+    oss_common
     ${SAMPLE_DEP_LIBS}
     -Wl,--unresolved-symbols=ignore-in-shared-libs
 )
-
-target_include_directories(${TARGET_NAME} PRIVATE ${IXRT_INCLUDE_DIR})
+target_link_directories(${TARGET_NAME} PUBLIC ${CUDA_PATH})
+if(DEFINED ADDITIONAL_INCLUDE_DIR)
+    target_include_directories(${TARGET_NAME} PRIVATE ${IXRT_INCLUDE_DIR} ${ADDITIONAL_INCLUDE_DIR})
+else()
+    target_include_directories(${TARGET_NAME} PRIVATE ${IXRT_INCLUDE_DIR})
+endif()
 target_link_directories(${TARGET_NAME} PUBLIC ${IXRT_LIB_DIR})
 set_target_properties(${TARGET_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

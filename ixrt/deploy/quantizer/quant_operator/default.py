@@ -21,6 +21,7 @@ from .base import (
     quant_based_weight_bias_operator,
     quant_double_input_operator,
     quant_single_input_operator,
+    quant_pertensor_weight_bias_operator,
     registe_quant_operator,
 )
 
@@ -206,7 +207,7 @@ def convert_gather(*args, **kwargs):
 
 @registe_quant_operator(OP.GEMM)
 def convert_gemm(*args, **kwargs):
-    return quant_based_weight_bias_operator(*args, **kwargs)
+    return quant_pertensor_weight_bias_operator(*args, **kwargs)
 
 
 @registe_quant_operator(OP.GLOBAL_AVG_POOL)

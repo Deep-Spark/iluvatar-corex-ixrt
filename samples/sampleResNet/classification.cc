@@ -15,7 +15,6 @@
  *   under the License.
  */
 
-
 #include "classification.h"
 
 #include <fstream>
@@ -25,19 +24,27 @@
 #include <vector>
 
 #include "NvInfer.h"
+#include "NvInferImpl.h"
+#include "NvInferRuntime.h"
+#include "NvInferRuntimeCommon.h"
 #include "NvOnnxParser.h"
 #include "error_recorder.h"
 #include "image_io.h"
+#include "json.hpp"
 #include "logging.h"
 #include "memory_utils.h"
 #include "misc.h"
 #include "postprocess_utils.h"
 
+using json = nlohmann::json;
 using std::cerr;
 using std::cout;
 using std::endl;
 
-std::string dir_path("data/resnet18/");
+namespace nvinfer1::samples {
+using namespace nvinfer1::samples::common;
+
+static std::string dir_path("data/resnet18/");
 void DumpBuffer2Disk(const std::string& file_path, void* data, uint64_t len) {
     std::ofstream out_file(file_path, std::ios::binary);
     if (not out_file.is_open()) {
@@ -48,7 +55,6 @@ void DumpBuffer2Disk(const std::string& file_path, void* data, uint64_t len) {
     out_file.close();
     cout << "Dump buffer size " << len << endl;
 }
-
 void LoadBufferFromDisk(const std::string& file_path, std::vector<int8_t>* engine_buffer) {
     std::ifstream in_file(file_path, std::ios::binary);
     if (not in_file.is_open()) {
@@ -82,13 +88,14 @@ void MyHook(nvinfer1::ExecutionContextInfo const* info) {
         std::cout << i << "th input is " << info->inputNames[i] << std::endl;
     }
 }
-void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file,
-                        const std::string& engine_save_path, nvinfer1::BuilderFlag flag) {
+
+void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file, const std::string& engine_save_path,
+                    nvinfer1::BuilderFlag flag) {
     std::string image_path(dir_path + "kitten_224.bmp");
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -102,7 +109,7 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -110,7 +117,7 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -119,7 +126,7 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     }
     config->setFlag(flag);
 
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -160,7 +167,7 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -168,7 +175,7 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -195,28 +202,30 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -224,9 +233,9 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -247,6 +256,209 @@ void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file
     cout << "Resnet-18 with IxRT API demo done" << endl;
 }
 
+void IxRTAPIExecuteImplicitQuantization(const std::string& model_path, const std::string& quant_file,
+                                        const std::string& engine_save_path, nvinfer1::BuilderFlag flag) {
+    std::ifstream in(quant_file);
+    json quantization_config;
+    in >> quantization_config;
+    std::string image_path(dir_path + "kitten_224.bmp");
+    std::string input_name("input");
+    std::string output_name("output");
+    Logger logger(nvinfer1::ILogger::Severity::kINFO);
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    if (not builder) {
+        std::cout << "Create builder failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create builder success" << endl;
+    }
+    if (builder->platformHasFastInt8()) {
+        cout << "Current support Int8 inference" << endl;
+    } else {
+        cout << "Current not support Int8 inference" << endl;
+    }
+
+    const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    if (not network) {
+        std::cout << "Create network failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create network success" << endl;
+    }
+
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    if (not config) {
+        std::cout << "Create config failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create config success" << endl;
+    }
+    config->setFlag(flag);
+
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    if (not parser) {
+        std::cout << "Create config failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create config success" << endl;
+    }
+    bool parsed = false;
+    parsed = parser->parseFromFile(model_path.c_str(), static_cast<int>(logger.getReportableSeverity()));
+    if (!parsed) {
+        std::cout << "Create onnx parser failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create onnx parser success" << endl;
+    }
+
+    auto num_input = network->getNbInputs();
+    cout << "number of input: " << num_input << endl;
+    auto num_output = network->getNbOutputs();
+    cout << "number of output: " << num_output << endl;
+
+    nvinfer1::Dims inputDims = network->getInput(0)->getDimensions();
+    ASSERT(inputDims.nbDims == 4);
+    cout << "\nInput dimes: " << endl;
+    for (auto i = 0; i < inputDims.nbDims; ++i) {
+        cout << inputDims.d[i] << " ";
+    }
+
+    auto input_type = network->getInput(0)->getType();
+    cout << "Input dtype:" << (int32_t)input_type << endl;
+    auto output_type = network->getInput(0)->getType();
+    cout << "Output dtype:" << (int32_t)output_type << endl;
+
+    cout << "\nOutput dimes: " << endl;
+    nvinfer1::Dims outputDims = network->getOutput(0)->getDimensions();
+    ASSERT(outputDims.nbDims == 2);
+    for (auto i = 0; i < outputDims.nbDims; ++i) {
+        cout << outputDims.d[i] << " ";
+    }
+    cout << endl;
+
+    // setDynamicRange
+    int nb_layers = network->getNbLayers();
+    std::cout << "nb_layers: " << nb_layers << std::endl;
+    for (int i = 0; i < nb_layers; i++) {
+        auto layer = network->getLayer(i);
+        int nb_layer_inputs = layer->getNbInputs();
+        int nb_layer_outputs = layer->getNbOutputs();
+        for (int j = 0; j < nb_layer_inputs; j++) {
+            auto tensor = layer->getInput(j);
+            if (tensor and tensor->isNetworkInput()) {
+                auto tensor_name = tensor->getName();
+                if (quantization_config.contains(tensor_name)) {
+                    auto tensor_q_config = quantization_config[tensor_name];
+                    float min_v = tensor_q_config["min"];
+                    float max_v = tensor_q_config["max"];
+                    tensor->setDynamicRange(min_v, max_v);
+                    // std::cout << tensor_name << " set min: " << min_v << ", max: " << max_v << std::endl;
+                }
+            }
+        }
+        for (int j = 0; j < nb_layer_outputs; j++) {
+            auto tensor = layer->getOutput(j);
+            auto tensor_name = tensor->getName();
+            if (quantization_config.contains(tensor_name)) {
+                auto tensor_q_config = quantization_config[tensor_name];
+                float min_v = tensor_q_config["min"];
+                float max_v = tensor_q_config["max"];
+                tensor->setDynamicRange(min_v, max_v);
+                // std::cout << tensor_name << " set min: " << min_v << ", max: " << max_v << std::endl;
+            }
+        }
+    }
+
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    if (not plan) {
+        std::cout << "Create serialized engine plan failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create serialized engine plan done" << endl;
+    }
+
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    if (not runtime) {
+        std::cout << "Create runtime failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        cout << "Create runtime done" << endl;
+    }
+    std::shared_ptr<nvinfer1::ICudaEngine> engine;
+    std::vector<int8_t> engine_buffer;
+    if (not engine_save_path.empty()) {
+        DumpBuffer2Disk(engine_save_path, plan->data(), plan->size());
+        LoadBufferFromDisk(engine_save_path, &engine_buffer);
+        engine = std::shared_ptr<nvinfer1::ICudaEngine>(
+            runtime->deserializeCudaEngine(engine_buffer.data(), engine_buffer.size()), ObjectDeleter());
+    } else {
+        engine = std::shared_ptr<nvinfer1::ICudaEngine>(runtime->deserializeCudaEngine(plan->data(), plan->size()),
+                                                        ObjectDeleter());
+    }
+
+    if (not engine) {
+        std::cout << "Create engine failed" << std::endl;
+        std::exit(EXIT_FAILURE);
+    } else {
+        std::cout << "Create engine done" << endl;
+    }
+
+    cout << "Engine name: " << engine->getName() << endl;
+    auto num_bd = engine->getNbIOTensors();
+    cout << "Number of binding data: " << num_bd << endl;
+    for (auto i = 0; i < num_bd; ++i) {
+        cout << "The " << i << " binding" << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
+        cout << "Dimension: ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
+        }
+        cout << endl;
+    }
+
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
+    auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
+    std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
+    void* input_gpu{nullptr};
+    CHECK(cudaMalloc(&input_gpu, input_size));
+    void* output_gpu{nullptr};
+    CHECK(cudaMalloc(&output_gpu, output_size));
+    CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
+    cout << "User input date prepare done" << endl;
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    if (context) {
+        cout << "Create execution context done" << endl;
+    } else {
+        cout << "Create execution context failed" << endl;
+    }
+
+    auto status = context->executeV2(binding_buffer.data());
+    if (not status) {
+        cerr << "Execute ixrt failed" << endl;
+    } else {
+        cout << "Execute ixrt success" << endl;
+    }
+
+    CHECK(cudaMemcpy(cpu_output.get(), output_gpu, output_size, cudaMemcpyDeviceToHost));
+    GetClassificationResult(cpu_output.get(), 1000, 5, 0);
+    CHECK(cudaFree(input_gpu));
+    CHECK(cudaFree(output_gpu));
+    cout << "Resnet-18 implicit quantization with IxRT API demo done" << endl;
+}
+
 void IxRTAPIExecuteFromSerializedONNX() {
     std::string image_path(dir_path + "kitten_224.bmp");
     std::string model_path(dir_path + "resnet18_qdq_external.onnx");
@@ -255,7 +467,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
     std::string output_name("output");
     std::string engine_save_path(dir_path + "resnet18_qdq.engine");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -268,7 +480,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -276,7 +488,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -284,7 +496,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -329,7 +541,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -337,7 +549,7 @@ void IxRTAPIExecuteFromSerializedONNX() {
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -365,28 +577,30 @@ void IxRTAPIExecuteFromSerializedONNX() {
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -394,9 +608,9 @@ void IxRTAPIExecuteFromSerializedONNX() {
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -423,7 +637,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kWARNING);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -436,7 +650,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -444,7 +658,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -452,7 +666,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -487,7 +701,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -498,7 +712,7 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
     // Option operation, not necessary
     // WriteBuffer2Disk("/home/work/trt.engine", plan->data(), plan->size());
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -516,41 +730,43 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    std::vector<void*> warm_up_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    std::vector<void*> warm_up_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
-    CHECK(cudaMalloc(&warm_up_buffer.at(input_idx), input_size));
+    CHECK(cudaMalloc(&warm_up_buffer.at(0), input_size));
     void* output_gpu{nullptr};
     CHECK(cudaMalloc(&output_gpu, output_size));
-    CHECK(cudaMalloc(&warm_up_buffer.at(output_idx), output_size));
+    CHECK(cudaMalloc(&warm_up_buffer.at(1), output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -572,10 +788,10 @@ void IxRTAPIEnqueue(bool use_enqueue_v3) {
     bool status{false};
     if (use_enqueue_v3) {
         context->setInputConsumedEvent(*event_ptr);
-        if (context->setTensorAddress(input_name.c_str(), binding_buffer.at(input_idx))) {
+        if (context->setTensorAddress(input_name.c_str(), binding_buffer.at(0))) {
             cout << "Set input data done" << endl;
         }
-        if (context->setTensorAddress(output_name.c_str(), binding_buffer.at(output_idx))) {
+        if (context->setTensorAddress(output_name.c_str(), binding_buffer.at(1))) {
             cout << "Set output data done" << endl;
         }
         cout << "Enqueue V3" << endl;
@@ -609,7 +825,7 @@ void IxRTAPIMultiContext() {
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -622,7 +838,7 @@ void IxRTAPIMultiContext() {
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -630,7 +846,7 @@ void IxRTAPIMultiContext() {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -638,7 +854,7 @@ void IxRTAPIMultiContext() {
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -668,7 +884,7 @@ void IxRTAPIMultiContext() {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -676,7 +892,7 @@ void IxRTAPIMultiContext() {
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -693,16 +909,14 @@ void IxRTAPIMultiContext() {
         std::cout << "Create engine done" << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
     auto cpu_fp32_image_2 = LoadImageCPU(image_path_2, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    std::vector<void*> binding_buffer_2(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    std::vector<void*> binding_buffer_2(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     std::shared_ptr<float> cpu_output_2(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
@@ -716,13 +930,13 @@ void IxRTAPIMultiContext() {
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     CHECK(cudaMemcpy(input_gpu_2, cpu_fp32_image_2.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    binding_buffer_2.at(input_idx) = input_gpu_2;
-    binding_buffer_2.at(output_idx) = output_gpu_2;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    binding_buffer_2.at(0) = input_gpu_2;
+    binding_buffer_2.at(1) = output_gpu_2;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
 
-    auto context_2 = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context_2 = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     auto status = context->executeV2(binding_buffer.data());
     if (not status) {
         cerr << "Execute ixrt failed" << endl;
@@ -756,7 +970,7 @@ void IxRTAPIDynamicShape() {
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -769,7 +983,7 @@ void IxRTAPIDynamicShape() {
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -777,7 +991,7 @@ void IxRTAPIDynamicShape() {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -790,7 +1004,7 @@ void IxRTAPIDynamicShape() {
     profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, nvinfer1::Dims{4, {1, 3, 224, 224}});
     profile->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, nvinfer1::Dims{4, {1, 3, 448, 448}});
     config->addOptimizationProfile(profile);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -820,7 +1034,7 @@ void IxRTAPIDynamicShape() {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -828,7 +1042,7 @@ void IxRTAPIDynamicShape() {
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -845,44 +1059,42 @@ void IxRTAPIDynamicShape() {
         std::cout << "Create engine done" << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     nvinfer1::Dims dynamic_input_dims{4, {1, 3, 224, 224}};
     auto cpu_fp32_image = LoadImageCPU(image_path, dynamic_input_dims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(dynamic_input_dims, engine->getBindingDataType(input_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors() * engine->getNbOptimizationProfiles());
+    auto input_size = GetBytes(dynamic_input_dims, engine->getTensorDataType(input_name.c_str()));
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
 
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
 
-    context->setBindingDimensions(input_idx, dynamic_input_dims);
-    auto context_input_dims = context->getBindingDimensions(input_idx);
+    context->setInputShape(input_name.c_str(), dynamic_input_dims);
+    auto context_input_dims = context->getTensorShape(input_name.c_str());
     cout << "Dynamic input dims: ";
     for (auto i = 0; i < context_input_dims.nbDims; ++i) {
         cout << context_input_dims.d[i] << " ";
     }
     cout << endl;
-    auto context_output_dims = context->getBindingDimensions(output_idx);
+    auto context_output_dims = context->getTensorShape(output_name.c_str());
     cout << "Dynamic output dims: ";
     for (auto i = 0; i < context_output_dims.nbDims; ++i) {
         cout << context_output_dims.d[i] << " ";
     }
     cout << endl;
 
-    auto output_size = GetBytes(context_output_dims, engine->getBindingDataType(output_idx));
+    auto output_size = GetBytes(context_output_dims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     std::shared_ptr<float> cpu_output_2(new float[output_size / sizeof(float)], ArrayDeleter());
     void* output_gpu{nullptr};
     CHECK(cudaMalloc(&output_gpu, output_size));
 
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
 
     auto status = context->executeV2(binding_buffer.data());
     if (not status) {
@@ -899,21 +1111,21 @@ void IxRTAPIDynamicShape() {
     // Prepare image with small size
     nvinfer1::Dims dynamic_input_dims_2{4, {1, 3, 196, 196}};
     auto cpu_fp32_image_2 = LoadImageCPU(image_path_2, dynamic_input_dims_2);
-    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getBindingDataType(input_idx));
+    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getTensorDataType(input_name.c_str()));
     void* input_gpu_2{nullptr};
     CHECK(cudaMalloc(&input_gpu_2, input_size_2));
     CHECK(cudaMemcpy(input_gpu_2, cpu_fp32_image_2.get(), input_size_2, cudaMemcpyHostToDevice));
 
-    context->setBindingDimensions(input_idx, dynamic_input_dims_2);
+    context->setInputShape(input_name.c_str(), dynamic_input_dims_2);
 
-    auto context_output_dims_2 = context->getBindingDimensions(output_idx);
+    auto context_output_dims_2 = context->getTensorShape(output_name.c_str());
 
-    auto output_size_2 = GetBytes(context_output_dims_2, engine->getBindingDataType(output_idx));
+    auto output_size_2 = GetBytes(context_output_dims_2, engine->getTensorDataType(output_name.c_str()));
     void* output_gpu_2{nullptr};
     CHECK(cudaMalloc(&output_gpu_2, output_size_2));
-    std::vector<void*> binding_buffer_2(engine->getNbBindings());
-    binding_buffer_2.at(input_idx) = input_gpu_2;
-    binding_buffer_2.at(output_idx) = output_gpu_2;
+    std::vector<void*> binding_buffer_2(engine->getNbIOTensors());
+    binding_buffer_2.at(0) = input_gpu_2;
+    binding_buffer_2.at(1) = output_gpu_2;
     auto status_2 = context->executeV2(binding_buffer_2.data());
     if (not status_2) {
         cerr << "Execute ixrt failed" << endl;
@@ -925,6 +1137,7 @@ void IxRTAPIDynamicShape() {
     GetClassificationResult(cpu_output_2.get(), 1000, 5);
     CHECK(cudaFree(input_gpu_2));
     CHECK(cudaFree(output_gpu_2));
+    cout << "Done" << endl;
 }
 
 void IxRTAPIDynamicShapeMultiContext() {
@@ -935,7 +1148,7 @@ void IxRTAPIDynamicShapeMultiContext() {
     std::string output_name("output");
 
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -948,7 +1161,7 @@ void IxRTAPIDynamicShapeMultiContext() {
         cout << "Current not support Int8 inference" << endl;
     }
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -956,7 +1169,7 @@ void IxRTAPIDynamicShapeMultiContext() {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -980,7 +1193,7 @@ void IxRTAPIDynamicShapeMultiContext() {
     config->addOptimizationProfile(profile_2);
     // Add third profile, same as first
     config->addOptimizationProfile(profile);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1010,7 +1223,7 @@ void IxRTAPIDynamicShapeMultiContext() {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1018,7 +1231,7 @@ void IxRTAPIDynamicShapeMultiContext() {
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1035,64 +1248,54 @@ void IxRTAPIDynamicShapeMultiContext() {
         std::cout << "Create engine done" << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     int32_t profile_index = 1;
-    auto input_min_dim = engine->getProfileDimensions(input_idx, profile_index, nvinfer1::OptProfileSelector::kMIN);
+    auto input_min_dim = engine->getProfileShape(input_name.c_str(), profile_index, nvinfer1::OptProfileSelector::kMIN);
     PrintDims(input_min_dim, "Input min dim: ");
-    auto input_opt_dim = engine->getProfileDimensions(input_idx, profile_index, nvinfer1::OptProfileSelector::kOPT);
+    auto input_opt_dim = engine->getProfileShape(input_name.c_str(), profile_index, nvinfer1::OptProfileSelector::kOPT);
     PrintDims(input_opt_dim, "Input opt dim: ");
-    auto input_max_dim = engine->getProfileDimensions(input_idx, profile_index, nvinfer1::OptProfileSelector::kMAX);
+    auto input_max_dim = engine->getProfileShape(input_name.c_str(), profile_index, nvinfer1::OptProfileSelector::kMAX);
     PrintDims(input_max_dim, "Input max dim: ");
-    auto output_min_dim = engine->getProfileDimensions(output_idx, profile_index, nvinfer1::OptProfileSelector::kMIN);
-    PrintDims(output_min_dim, "Output min dim: ");
-    auto output_opt_dim = engine->getProfileDimensions(output_idx, profile_index, nvinfer1::OptProfileSelector::kOPT);
-    PrintDims(output_opt_dim, "Output opt dim: ");
-    auto output_max_dim = engine->getProfileDimensions(output_idx, profile_index, nvinfer1::OptProfileSelector::kMAX);
-    PrintDims(output_max_dim, "Output max dim: ");
+
+    auto num_io_tensor = engine->getNbIOTensors();
+    cout << "Number of io " << num_io_tensor << endl;
+    auto num_profile = engine->getNbOptimizationProfiles();
+    cout << "Number of profile " << num_profile << endl;
+    std::vector<void*> binding_buffer(num_io_tensor * num_profile);
 
     nvinfer1::Dims dynamic_input_dims{4, {1, 3, 224, 224}};
     auto cpu_fp32_image = LoadImageCPU(image_path, dynamic_input_dims);
-    auto num_binding = engine->getNbBindings();
-    cout << "Number of binding " << num_binding << endl;
-    auto num_profile = engine->getNbOptimizationProfiles();
-    cout << "Number of profile " << num_profile << endl;
-    auto binding_cell_size = num_binding / num_profile;
-    cout << "Binding cell size: " << binding_cell_size << endl;
-    std::vector<void*> binding_buffer(num_binding);
-    auto input_size = GetBytes(dynamic_input_dims, engine->getBindingDataType(input_idx));
+    auto input_size = GetBytes(dynamic_input_dims, engine->getTensorDataType(input_name.c_str()));
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
 
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
 
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
 
-    context->setBindingDimensions(input_idx, dynamic_input_dims);
-    auto context_input_dims = context->getBindingDimensions(input_idx);
+    context->setInputShape(input_name.c_str(), dynamic_input_dims);
+    auto context_input_dims = context->getTensorShape(input_name.c_str());
     cout << "Dynamic input dims: ";
     for (auto i = 0; i < context_input_dims.nbDims; ++i) {
         cout << context_input_dims.d[i] << " ";
     }
     cout << endl;
-    auto context_output_dims = context->getBindingDimensions(output_idx);
+    auto context_output_dims = context->getTensorShape(output_name.c_str());
     cout << "Dynamic output dims: ";
     for (auto i = 0; i < context_output_dims.nbDims; ++i) {
         cout << context_output_dims.d[i] << " ";
     }
     cout << endl;
 
-    auto output_size = GetBytes(context_output_dims, engine->getBindingDataType(output_idx));
+    auto output_size = GetBytes(context_output_dims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
-    std::shared_ptr<float> cpu_output_2(new float[output_size / sizeof(float)], ArrayDeleter());
     void* output_gpu{nullptr};
     CHECK(cudaMalloc(&output_gpu, output_size));
 
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
 
     auto status = context->executeV2(binding_buffer.data());
     if (not status) {
@@ -1107,28 +1310,32 @@ void IxRTAPIDynamicShapeMultiContext() {
     CHECK(cudaFree(output_gpu));
 
     // Prepare image with small size
-    auto context_2 = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context_2 = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     auto stream = makeCudaStream();
-    context_2->setOptimizationProfileAsync(1, *stream);
+    context_2->setOptimizationProfileAsync(profile_index, *stream);
+
+    auto binding_cell_offset = profile_index * num_io_tensor;
+    cout << "Binding cell offset: " << binding_cell_offset << endl;
+
     // Switch optimization profile by set profile index, context resource will be updated
     //    context_2->setOptimizationProfileAsync(2, *stream);
 
     nvinfer1::Dims dynamic_input_dims_2{4, {1, 3, 224, 224}};
     auto cpu_fp32_image_2 = LoadImageCPU(image_path_2, dynamic_input_dims_2);
-    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getBindingDataType(input_idx + binding_cell_size));
+    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getTensorDataType(input_name.c_str()));
     void* input_gpu_2{nullptr};
     CHECK(cudaMalloc(&input_gpu_2, input_size_2));
     CHECK(cudaMemcpy(input_gpu_2, cpu_fp32_image_2.get(), input_size_2, cudaMemcpyHostToDevice));
 
-    context_2->setBindingDimensions(input_idx, dynamic_input_dims_2);
+    context_2->setInputShape(input_name.c_str(), dynamic_input_dims_2);
+    auto context_output_dims_2 = context_2->getTensorShape(output_name.c_str());
 
-    auto context_output_dims_2 = context_2->getBindingDimensions(output_idx);
-
-    auto output_size_2 = GetBytes(context_output_dims_2, engine->getBindingDataType(output_idx));
+    auto output_size_2 = GetBytes(context_output_dims_2, engine->getTensorDataType(output_name.c_str()));
+    std::shared_ptr<float> cpu_output_2(new float[output_size_2 / sizeof(float)], ArrayDeleter());
     void* output_gpu_2{nullptr};
     CHECK(cudaMalloc(&output_gpu_2, output_size_2));
-    binding_buffer.at(input_idx + binding_cell_size) = input_gpu_2;
-    binding_buffer.at(output_idx + binding_cell_size) = output_gpu_2;
+    binding_buffer.at(0 + binding_cell_offset) = input_gpu_2;
+    binding_buffer.at(1 + binding_cell_offset) = output_gpu_2;
     auto status_2 = context_2->executeV2(binding_buffer.data());
     if (not status_2) {
         cerr << "Execute ixrt failed" << endl;
@@ -1140,6 +1347,7 @@ void IxRTAPIDynamicShapeMultiContext() {
     GetClassificationResult(cpu_output_2.get(), 1000, 5);
     CHECK(cudaFree(input_gpu_2));
     CHECK(cudaFree(output_gpu_2));
+    cout << "Done" << endl;
 }
 
 void IxRTAPILoadEngine() {
@@ -1149,7 +1357,7 @@ void IxRTAPILoadEngine() {
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1186,29 +1394,32 @@ void IxRTAPILoadEngine() {
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
-    auto inputDims = engine->getBindingDimensions(0);
-    auto outputDims = engine->getBindingDimensions(1);
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+
+    auto inputDims = engine->getTensorShape(input_name.c_str());
+    auto outputDims = engine->getTensorShape(output_name.c_str());
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -1216,10 +1427,10 @@ void IxRTAPILoadEngine() {
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
-    auto again = UniquePtr<nvinfer1::IHostMemory>(context->getEngine().serialize());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto again = UPtr<nvinfer1::IHostMemory>(context->getEngine().serialize());
     if (again) {
         cout << "Create again success size: " << again->size() << endl;
     } else {
@@ -1246,12 +1457,12 @@ void IxRTAPILoadEngine() {
 }
 
 void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& quant_file,
-                                const std::string& engine_save_path) {
+                            const std::string& engine_save_path) {
     std::string image_path(dir_path + "kitten_224.bmp");
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1265,7 +1476,7 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1273,7 +1484,7 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1282,7 +1493,7 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
     }
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
 
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1323,7 +1534,7 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1331,7 +1542,7 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1358,28 +1569,30 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -1387,16 +1600,16 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
         cout << "Create execution context failed" << endl;
     }
 #ifndef USE_TRT
-    context->registerHook("Print name", MyHook, int32_t(nvinfer1::ExecutionHookFlag::kPRERUN));
+    context->registerHook("Print name", MyHook, nvinfer1::ExecutionHookFlag::kPRERUN);
 #endif
     auto status = context->executeV2(binding_buffer.data());
     if (not status) {
@@ -1413,12 +1626,12 @@ void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& qu
 }
 
 void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::string& engine_save_path,
-                                        nvinfer1::BuilderFlag flag) {
+                                    nvinfer1::BuilderFlag flag) {
     std::string image_path(dir_path + "kitten_224.bmp");
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kVERBOSE);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1427,7 +1640,7 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1435,7 +1648,7 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1444,7 +1657,7 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
     }
     config->setFlag(flag);
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1497,11 +1710,8 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
         if (layer->getType() == nvinfer1::LayerType::kPOOLING) {
             layer->setPrecision(nvinfer1::DataType::kFLOAT);
         }
-        if (layer->getType() == nvinfer1::LayerType::kFULLY_CONNECTED) {
-            layer->setPrecision(nvinfer1::DataType::kFLOAT);
-        }
     }
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1509,7 +1719,7 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1536,28 +1746,30 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -1565,9 +1777,9 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -1589,12 +1801,12 @@ void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::st
 }
 
 void IxRTContextMemoryExecute(const std::string& model_path, const std::string& quant_file,
-                                  const std::string& engine_save_path) {
+                              const std::string& engine_save_path) {
     std::string image_path(dir_path + "kitten_224.bmp");
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1608,7 +1820,7 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1616,7 +1828,7 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1625,7 +1837,7 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
     }
     config->setFlag(nvinfer1::BuilderFlag::kFP16);
 
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1666,7 +1878,7 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1674,7 +1886,7 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1701,28 +1913,30 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
     auto cpu_fp32_image = LoadImageCPU(image_path, inputDims);
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(inputDims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+    std::vector<void*> binding_buffer(engine->getNbIOTensors());
+    auto input_size = GetBytes(inputDims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
     CHECK(cudaMalloc(&input_gpu, input_size));
@@ -1730,9 +1944,9 @@ void IxRTContextMemoryExecute(const std::string& model_path, const std::string& 
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContextWithoutDeviceMemory());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContextWithoutDeviceMemory());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -1764,7 +1978,7 @@ void IxRTContextMemoryExecuteDynamic() {
     std::string input_name("input");
     std::string output_name("output");
     Logger logger(nvinfer1::ILogger::Severity::kINFO);
-    auto builder = UniquePtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
+    auto builder = UPtr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(logger));
     if (not builder) {
         std::cout << "Create builder failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1778,7 +1992,7 @@ void IxRTContextMemoryExecuteDynamic() {
     }
 
     const auto explicitBatch = 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
-    auto network = UniquePtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
+    auto network = UPtr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (not network) {
         std::cout << "Create network failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1786,7 +2000,7 @@ void IxRTContextMemoryExecuteDynamic() {
         cout << "Create network success" << endl;
     }
 
-    auto config = UniquePtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
+    auto config = UPtr<nvinfer1::IBuilderConfig>(builder->createBuilderConfig());
     if (not config) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1809,7 +2023,7 @@ void IxRTContextMemoryExecuteDynamic() {
                              nvinfer1::Dims{4, {1, 3, 224, 224}});
     config->addOptimizationProfile(profile_2);
 
-    auto parser = UniquePtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
+    auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1850,7 +2064,7 @@ void IxRTContextMemoryExecuteDynamic() {
     }
     cout << endl;
 
-    UniquePtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
+    UPtr<nvinfer1::IHostMemory> plan{builder->buildSerializedNetwork(*network, *config)};
     if (not plan) {
         std::cout << "Create serialized engine plan failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1858,7 +2072,7 @@ void IxRTContextMemoryExecuteDynamic() {
         cout << "Create serialized engine plan done" << endl;
     }
 
-    UniquePtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
+    UPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(logger)};
     if (not runtime) {
         std::cout << "Create runtime failed" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -1878,35 +2092,38 @@ void IxRTContextMemoryExecuteDynamic() {
     }
 
     cout << "Engine name: " << engine->getName() << endl;
-    auto num_bd = engine->getNbBindings();
+    auto num_bd = engine->getNbIOTensors();
     cout << "Number of binding data: " << num_bd << endl;
     for (auto i = 0; i < num_bd; ++i) {
         cout << "The " << i << " binding" << endl;
-        cout << "Name: " << engine->getBindingName(i) << endl;
-        cout << "Format: " << (int32_t)engine->getBindingFormat(i) << endl;
-        cout << "Data type: " << (int32_t)engine->getBindingDataType(i) << endl;
+
+        auto tensor_name = engine->getIOTensorName(i);
+        cout << "Name: " << tensor_name << endl;
+        cout << "Format: " << (int32_t)engine->getTensorFormat(tensor_name) << endl;
+        cout << "Data type: " << (int32_t)engine->getTensorDataType(tensor_name) << endl;
+
         cout << "Dimension: ";
-        for (auto k = 0; k < engine->getBindingDimensions(i).nbDims; ++k) {
-            cout << engine->getBindingDimensions(i).d[k] << " ";
+        auto dim = engine->getTensorShape(tensor_name);
+        for (auto k = 0; k < dim.nbDims; ++k) {
+            cout << dim.d[k] << " ";
         }
         cout << endl;
     }
 
-    auto input_idx = engine->getBindingIndex(input_name.c_str());
-    cout << "Input index: " << input_idx << endl;
-    auto output_idx = engine->getBindingIndex(output_name.c_str());
-    cout << "Output index: " << output_idx << endl;
+    inputDims = engine->getTensorShape(input_name.c_str());
+    outputDims = engine->getTensorShape(output_name.c_str());
+
     nvinfer1::Dims dynamic_input_dims{4, {1, 3, 224, 224}};
     auto cpu_fp32_image = LoadImageCPU(image_path, dynamic_input_dims);
-    auto num_binding = engine->getNbBindings();
-    cout << "Number of binding " << num_binding << endl;
+
+    auto num_io_tensor = engine->getNbIOTensors();
+    cout << "Number of io " << num_io_tensor << endl;
     auto num_profile = engine->getNbOptimizationProfiles();
     cout << "Number of profile " << num_profile << endl;
-    auto binding_cell_size = num_binding / num_profile;
-    cout << "Binding cell size: " << binding_cell_size << endl;
-    std::vector<void*> binding_buffer(engine->getNbBindings());
-    auto input_size = GetBytes(dynamic_input_dims, engine->getBindingDataType(input_idx));
-    auto output_size = GetBytes(outputDims, engine->getBindingDataType(output_idx));
+
+    std::vector<void*> binding_buffer(num_io_tensor * num_profile);
+    auto input_size = GetBytes(dynamic_input_dims, engine->getTensorDataType(input_name.c_str()));
+    auto output_size = GetBytes(outputDims, engine->getTensorDataType(output_name.c_str()));
     std::shared_ptr<float> cpu_output(new float[output_size / sizeof(float)], ArrayDeleter());
     std::shared_ptr<float> cpu_output_2(new float[output_size / sizeof(float)], ArrayDeleter());
     void* input_gpu{nullptr};
@@ -1915,9 +2132,9 @@ void IxRTContextMemoryExecuteDynamic() {
     CHECK(cudaMalloc(&output_gpu, output_size));
     CHECK(cudaMemcpy(input_gpu, cpu_fp32_image.get(), input_size, cudaMemcpyHostToDevice));
     cout << "User input date prepare done" << endl;
-    binding_buffer.at(input_idx) = input_gpu;
-    binding_buffer.at(output_idx) = output_gpu;
-    auto context = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContextWithoutDeviceMemory());
+    binding_buffer.at(0) = input_gpu;
+    binding_buffer.at(1) = output_gpu;
+    auto context = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContextWithoutDeviceMemory());
     if (context) {
         cout << "Create execution context done" << endl;
     } else {
@@ -1929,7 +2146,7 @@ void IxRTContextMemoryExecuteDynamic() {
     CHECK(cudaMalloc(&context_gpu, context_mem_size));
     context->setDeviceMemory(context_gpu);
 
-    context->setBindingDimensions(input_idx, dynamic_input_dims);
+    context->setInputShape(input_name.c_str(), dynamic_input_dims);
 
     auto status = context->executeV2(binding_buffer.data());
     if (not status) {
@@ -1944,28 +2161,32 @@ void IxRTContextMemoryExecuteDynamic() {
     CHECK(cudaFree(output_gpu));
 
     // Prepare image with small size
-    auto context_2 = UniquePtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
+    auto context_2 = UPtr<nvinfer1::IExecutionContext>(engine->createExecutionContext());
     auto stream = makeCudaStream();
-    context_2->setOptimizationProfileAsync(1, *stream);
+    int32_t profile_index = 1;
+    context_2->setOptimizationProfileAsync(profile_index, *stream);
     // Switch optimization profile by set profile index, context resource will be updated
     //    context_2->setOptimizationProfileAsync(2, *stream);
 
+    auto binding_cell_offset = profile_index * num_io_tensor;
+    cout << "Binding cell offset: " << binding_cell_offset << endl;
+
     nvinfer1::Dims dynamic_input_dims_2{4, {1, 3, 224, 224}};
     auto cpu_fp32_image_2 = LoadImageCPU(image_path_2, dynamic_input_dims_2);
-    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getBindingDataType(input_idx + binding_cell_size));
+    auto input_size_2 = GetBytes(dynamic_input_dims_2, engine->getTensorDataType(input_name.c_str()));
     void* input_gpu_2{nullptr};
     CHECK(cudaMalloc(&input_gpu_2, input_size_2));
     CHECK(cudaMemcpy(input_gpu_2, cpu_fp32_image_2.get(), input_size_2, cudaMemcpyHostToDevice));
 
-    context_2->setBindingDimensions(input_idx, dynamic_input_dims_2);
+    context_2->setInputShape(input_name.c_str(), dynamic_input_dims_2);
 
-    auto context_output_dims_2 = context_2->getBindingDimensions(output_idx);
+    auto context_output_dims_2 = context_2->getTensorShape(output_name.c_str());
 
-    auto output_size_2 = GetBytes(context_output_dims_2, engine->getBindingDataType(output_idx));
+    auto output_size_2 = GetBytes(context_output_dims_2, engine->getTensorDataType(output_name.c_str()));
     void* output_gpu_2{nullptr};
     CHECK(cudaMalloc(&output_gpu_2, output_size_2));
-    binding_buffer.at(input_idx + binding_cell_size) = input_gpu_2;
-    binding_buffer.at(output_idx + binding_cell_size) = output_gpu_2;
+    binding_buffer.at(0 + binding_cell_offset) = input_gpu_2;
+    binding_buffer.at(1 + binding_cell_offset) = output_gpu_2;
     auto status_2 = context_2->executeV2(binding_buffer.data());
     if (not status_2) {
         cerr << "Execute ixrt failed" << endl;
@@ -1980,3 +2201,5 @@ void IxRTContextMemoryExecuteDynamic() {
 
     cout << "Resnet-18 with ContextMemoryExecuteDynamic demo done" << endl;
 }
+
+}  // namespace nvinfer1::samples

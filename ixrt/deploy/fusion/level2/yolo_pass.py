@@ -124,7 +124,7 @@ class FuseYoloDecoder(BasePass):
             outputs=[nodes[-1].operator.outputs[0]],
             anchor=anchor,
             num_class=num_class,
-            stride=stride,
+            stride=int(stride),
             faster_impl=self.faster_impl,
             attr_cls=op_attrs.YoloDecoderAttr,
         )
@@ -186,7 +186,7 @@ class FuseYoloDecoder(BasePass):
             outputs=[nodes[-1].operator.outputs[0]],
             anchor=anchor,
             num_class=num_class,
-            stride=stride,
+            stride=int(stride),
             faster_impl=self.faster_impl,
             attr_cls=op_attrs.YoloDecoderAttr,
         )

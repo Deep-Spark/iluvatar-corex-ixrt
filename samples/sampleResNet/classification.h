@@ -15,11 +15,11 @@
  *   under the License.
  */
 
-
 #pragma once
 #include <string>
 
 #include "NvInfer.h"
+namespace nvinfer1::samples {
 void ResNet18Execute();
 
 void ResNet18Engine();
@@ -41,16 +41,20 @@ void ResNet18FromOnnx();
 void ResNet18OnnxEngine();
 
 void IxRTAPIExecute(const std::string& model_path, const std::string& quant_file = "",
-                        const std::string& engine_save_path = "/tmp/resnet18_trt.engine",
-                        nvinfer1::BuilderFlag flag = nvinfer1::BuilderFlag::kFP16);
+                    const std::string& engine_save_path = "/tmp/resnet18_trt.engine",
+                    nvinfer1::BuilderFlag flag = nvinfer1::BuilderFlag::kFP16);
+
+void IxRTAPIExecuteImplicitQuantization(const std::string& model_path, const std::string& quant_file = "",
+                                        const std::string& engine_save_path = "/tmp/resnet18_trt_implicit_int8.engine",
+                                        nvinfer1::BuilderFlag flag = nvinfer1::BuilderFlag::kINT8);
 
 void IxRTContextMemoryExecute(const std::string& model_path, const std::string& quant_file,
-                                  const std::string& engine_save_path);
+                              const std::string& engine_save_path);
 
 void IxRTContextMemoryExecuteDynamic();
 
 void IxRTAPIExecuteWithHook(const std::string& model_path, const std::string& quant_file = "",
-                                const std::string& engine_save_path = "/tmp/resnet18_trt.engine");
+                            const std::string& engine_save_path = "/tmp/resnet18_trt.engine");
 
 void IxRTAPIExecuteFromSerializedONNX();
 
@@ -64,6 +68,7 @@ void IxRTAPIDynamicShapeMultiContext();
 
 void IxRTAPILoadEngine();
 
-void IxRTAPIExecuteCustomFP32Layers(
-    const std::string& model_path, const std::string& engine_save_path = "",
-    nvinfer1::BuilderFlag flag = nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS);
+void IxRTAPIExecuteCustomFP32Layers(const std::string& model_path, const std::string& engine_save_path = "",
+                                    nvinfer1::BuilderFlag flag = nvinfer1::BuilderFlag::kOBEY_PRECISION_CONSTRAINTS);
+
+}  // namespace nvinfer1::samples

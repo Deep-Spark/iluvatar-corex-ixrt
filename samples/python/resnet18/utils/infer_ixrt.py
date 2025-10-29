@@ -20,6 +20,7 @@ import sys
 import cv2
 import numpy as np
 import torch
+
 from ixrt.utils import topk
 
 from .imagenet_labels import labels

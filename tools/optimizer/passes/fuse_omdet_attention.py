@@ -118,7 +118,7 @@ class FusionLayerOmdetAttention(Fusion):
             add_2 = self.model.get_initializer(q_nodes_1[7].input[1], True)
             add_all = np.squeeze(add_1 + add_2)
             
-            attention_input_1_name = "attention_" + q_nodes_1[5].input[1]
+            attention_input_1_name = "attention_" + q_nodes_1[5].input[1] + "_"+ q_nodes_1[7].input[1]
             attention_input_1 = helper.make_tensor(
                 attention_input_1_name, TensorProto.FLOAT, add_all.shape, add_all.flatten().tolist())
             
@@ -133,7 +133,7 @@ class FusionLayerOmdetAttention(Fusion):
             ),
         )
         attention_node.domain = "com.iluvatar"
-        attention_node.attribute.extend([helper.make_attribute("type_id", 2)])
+        attention_node.attribute.extend([helper.make_attribute("type_id", 1)])
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend([helper.make_attribute("hidden_size", hidden_size)])
         attention_node.attribute.extend([helper.make_attribute("has_mask", 1)])

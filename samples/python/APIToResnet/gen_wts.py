@@ -148,13 +148,13 @@ if __name__ == "__main__":
     fused_net = fuse(net)
     print(fused_net.code)
     inp = torch.randn(10, 3, 224, 224).cuda()
-    torch.testing.assert_allclose(fused_net(inp), net(inp))
+    torch.testing.assert_close(fused_net(inp), net(inp))
     print("Unfused time: ", benchmark(inp, net))
     print("Fused time: ", benchmark(inp, fused_net))
 
     save_path = join(
         dirname(__file__),
-        "../../data/resnet18/resnet18_fusebn.wts",
+        "../../../data/resnet18/resnet18_fusebn.wts",
     )
     f = open(save_path, "w")
     f.write("{}\n".format(len(fused_net.state_dict().keys())))
@@ -169,3 +169,4 @@ if __name__ == "__main__":
             f.write(" ")
             f.write(struct.pack(">f", float(vv)).hex())
         f.write("\n")
+    f.close()

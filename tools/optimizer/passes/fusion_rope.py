@@ -85,7 +85,7 @@ class FusionRoPE(Fusion):
                 name=rope_node_name,
             )
             rope_node.domain = "com.iluvatar"
-            rope_node.attribute.extend([helper.make_attribute("type_id", 2)])
+            rope_node.attribute.extend([helper.make_attribute("type_id", 1)])
             rope_node.attribute.extend([helper.make_attribute("plugin_namespace", "")])
             rope_node.attribute.extend([helper.make_attribute("plugin_version", "1")])
 

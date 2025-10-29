@@ -14,8 +14,6 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #pragma once
 #include <chrono>
 #include <cstdint>
@@ -23,7 +21,7 @@
 #include <vector>
 
 #include "data_utils.h"
-
+namespace nvinfer1::samples::common {
 inline uint64_t _NowUs() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
@@ -103,3 +101,5 @@ void YoloV7GetResults(const IOBuffers& buffers, std::vector<DetectionResult>* ou
 
 using DetectionResults = std::vector<DetectionResult>;
 using BatchDetectionResults = std::vector<std::shared_ptr<DetectionResults>>;
+
+}  // namespace nvinfer1::samples::common

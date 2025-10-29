@@ -14,12 +14,10 @@
  *   License for the specific language governing permissions and limitations
  *   under the License.
  */
-
-
 #include "data_utils.h"
 
 #include <random>
-
+namespace nvinfer1::samples::common {
 void SetRandomData(float* data, uint64_t size) {
     std::default_random_engine generator(42);
     std::uniform_real_distribution<float> distribution(0, 1);
@@ -28,3 +26,5 @@ void SetRandomData(float* data, uint64_t size) {
         data++;
     }
 }
+
+}  // namespace nvinfer1::samples::common

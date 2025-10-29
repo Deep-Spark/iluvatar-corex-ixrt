@@ -51,36 +51,8 @@ fi
 
 # Quant Model
 if [ $PRECISION == "int8" ];then
-    let step++
-    echo;
-    echo [STEP ${step}] : Quant Model
-    if [[ -z ${QUANT_EXIST_ONNX} ]];then
-        QUANT_EXIST_ONNX=$YOLOV5_CHECKPOINTS_DIR/quantized_${MODEL_NAME}.onnx
-    fi
-    if [ -z ${QUANT_EXIST_SCALE_JSON} ];then
-        QUANT_EXIST_SCALE_JSON=$YOLOV5_CHECKPOINTS_DIR/quantized_${MODEL_NAME}.json
-    fi
-    if [[ -f ${QUANT_EXIST_ONNX} && -f ${QUANT_EXIST_SCALE_JSON} ]];then
-        SIM_MODEL=${QUANT_EXIST_ONNX}
-        echo "  "Quant Model Skip, ${QUANT_EXIST_ONNX} and ${QUANT_EXIST_SCALE_JSON} has been existed
-    else
-        python3 ./samples/sampleYoloV5/deploy/quant.py              \
-            --model ${SIM_MODEL}               \
-            --model_name ${MODEL_NAME}         \
-            --dataset_dir ${DATASET_DIR}       \
-            --observer ${QUANT_OBSERVER}       \
-            --disable_quant_names ${DISABLE_QUANT_LIST[@]} \
-            --save_dir $YOLOV5_CHECKPOINTS_DIR        \
-            --bsz   ${QUANT_BATCHSIZE}         \
-            --step  ${QUANT_STEP}              \
-            --seed  ${QUANT_SEED}              \
-            --imgsz ${IMGSIZE}                 \
-            --quant_format ${QUANT_FORMAT}
-        SIM_MODEL=${QUANT_EXIST_ONNX}
-        echo "  "Generate ${SIM_MODEL} and ${QUANT_EXIST_SCALE_JSON}
-    fi
-else
-    QUANT_EXIST_SCALE_JSON=tmp
+    QUANT_EXIST_ONNX=$YOLOV5_CHECKPOINTS_DIR/quantized_${MODEL_NAME}.onnx
+    SIM_MODEL=${QUANT_EXIST_ONNX}
 fi
 
 # Fuse Layer

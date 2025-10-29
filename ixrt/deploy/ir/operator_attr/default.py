@@ -51,7 +51,6 @@ class PoolingAttr(BaseOperatorAttr):
     strides: List[int] = None
     count_include_pad: int = 0
 
-
 @dataclass()
 class BatchNormAttr(BaseOperatorAttr):
     epsilon: float
@@ -216,7 +215,6 @@ class LstmAttr(BaseOperatorAttr):
 @dataclass()
 class MaxPoolAttr(PoolingAttr):
     dilations: List[int] = None
-    storage_order: int = 0
 
 
 @dataclass()
@@ -251,12 +249,13 @@ class RandomUniformLikeAttr(BaseOperatorAttr):
 
 @dataclass()
 class DequantizeLinearAttr(BaseOperatorAttr):
-    axis: int = 1
+    axis: int = 0
+    saturate: int = 1
 
 
 @dataclass()
 class QuantizeLinearAttr(BaseOperatorAttr):
-    axis: int = 1
+    axis: int = 0
     saturate: int = 1
 
 
