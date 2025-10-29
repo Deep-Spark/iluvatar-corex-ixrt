@@ -92,6 +92,7 @@ def nptype(ixrt_type):
         int32: np.int32,
         int64: np.int64,
         bool: np.bool_,
+        bfloat16: np.uint16,
     }
     if ixrt_type in mapping:
         return mapping[ixrt_type]

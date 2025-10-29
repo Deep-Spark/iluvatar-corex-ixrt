@@ -53,6 +53,11 @@ def dequant(arr, scale):
     return (arr * scale).astype(np.float32)
 
 
+def bfloat16_to_float32(bfloat16_array):
+    uint32_data = bfloat16_array.astype(np.uint32) << 16
+    float32_data = uint32_data.view(np.float32)
+    return float32_data
+
 # padding
 def _to_double_paddings(single_paddings):
     return [(0, i) for i in single_paddings]
@@ -108,6 +113,8 @@ def convert_execution_tensor(tensor, ort_style=True):
         #     result = dequant(result, tensor.scale)
         if result.dtype == np.float16:
             result = result.astype(np.float32)
+        elif tensor.dtype == ixrt.DataType.BF16:
+            result = bfloat16_to_float32(result)
 
         # process tensor data format to be linear, which is consistent with ort
         if tensor.format == ixrt.TensorFormat.HWC and len(tensor.shape) >= 3:
