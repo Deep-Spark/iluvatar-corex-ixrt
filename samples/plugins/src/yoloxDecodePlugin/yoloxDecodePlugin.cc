@@ -268,12 +268,14 @@ void YoloxDecoder::serialize(void* buffer) const noexcept {
 }
 
 YoloxDecoder::YoloxDecoder(int32_t numClass, int32_t stride) : mNumClass(numClass), mStride(stride) {
+    initialize();
     validateAttributes(numClass, stride);
 }
 
 YoloxDecoder::YoloxDecoder(void const* data, size_t length) {
     PLUGIN_ASSERT(data != nullptr);
     PLUGIN_ASSERT(length == kSERIALIZATION_SIZE);
+    initialize();
 
     char const* d = static_cast<char const*>(data);
     char const* a = d;
