@@ -116,7 +116,7 @@ def create_serialized_network_by_build(exec_config):
         onnx_path = converted_model
 
     ixrt_input_shapes, is_dynamic_model, input_type_dict, _ = get_io_info(exec_config)
-    if exec_config.precision not in ["fp16", "int8", "fp32"]:
+    if exec_config.precision not in ["fp16", "bf16", "int8", "fp32"]:
         raise ValueError(f"unsupported precision {exec_config.precision}")
 
     import_quantified_qdq_model = False
@@ -187,6 +187,9 @@ def create_serialized_network_by_build(exec_config):
     elif exec_config.precision == "fp16":
         parse_status = parser.parse_from_file(onnx_path)
         build_config.set_flag(ixrt.BuilderFlag.FP16)
+    elif exec_config.precision == "bf16":
+        parse_status = parser.parse_from_file(onnx_path)
+        build_config.set_flag(ixrt.BuilderFlag.BF16)
     assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()
     if is_dynamic_model:
