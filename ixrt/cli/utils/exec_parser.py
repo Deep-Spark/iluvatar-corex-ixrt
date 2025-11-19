@@ -81,7 +81,7 @@ def args_parser():
         "--precision",
         type=str,
         choices=["int8", "fp16", "bf16", "fp32"],
-        default="fp16",
+        default="fp32",
         help="Set model inference precision, can be set to fp16 or int8",
     )
     parser.add_argument(

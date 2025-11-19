@@ -190,6 +190,8 @@ def create_serialized_network_by_build(exec_config):
     elif exec_config.precision == "bf16":
         parse_status = parser.parse_from_file(onnx_path)
         build_config.set_flag(ixrt.BuilderFlag.BF16)
+    else:
+        parse_status = parser.parse_from_file(onnx_path)
     assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()
     if is_dynamic_model:
