@@ -109,11 +109,6 @@ def args_parser():
         help="dump engine graph in onnx format",
     )
     parser.add_argument(
-        "--show_param",
-        action="store_true",
-        help="show shapes and params of nodes and edges",
-    )
-    parser.add_argument(
         "--run_profiler",
         action="store_true",
         help="running profiling",

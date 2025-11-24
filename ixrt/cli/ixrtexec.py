@@ -29,6 +29,7 @@ import cuda.cuda as cuda
 import cuda.cudart as cudart
 import numpy as np
 import onnx
+from onnx import helper, TensorProto
 import ixrt
 from tabulate import tabulate
 from ixrt.cli.compare_result import IxrtLayerSaver, create_acc_comp_config
@@ -205,6 +206,7 @@ def create_serialized_network_by_build(exec_config):
             inp.shape = input_shape
             opt_profile.set_shape(input_name, input_shape, input_shape, input_shape)
     build_config.add_optimization_profile(opt_profile)
+    build_config.profiling_verbosity = ixrt.ProfilingVerbosity.DETAILED
 
     plan = builder.build_serialized_network(network, build_config)
     if os.path.exists(converted_model):
@@ -472,17 +474,14 @@ def main():
     runtime = ixrt.Runtime(IXRT_LOGGER)
     engine = runtime.deserialize_cuda_engine(serialized_network)
     assert engine
-    # engine_observer = engine.create_engine_observer()
-    # assert engine_observer
-    # if exec_config.dump_graph is not None:
-    #     engine_observer.save_engine_graph(exec_config.dump_graph)
-    #
-    # node_json_str = engine_observer.get_node_info()
-    # graph_json_object = json.loads(node_json_str)
-    #
-    # if exec_config.show_param:
-    #     print("graph nodes: ", graph_json_object["nodes"])
-    #     print("graph edges: ", graph_json_object["edges"])
+    engine_inspector = engine.create_engine_inspector()
+    assert engine_inspector
+
+    if exec_config.dump_graph is not None:
+        if "IXRT_DEBUG_TOOL" in os.environ.keys() and os.path.exists(os.environ["IXRT_DEBUG_TOOL"]):
+            engine_inspector.save_engine_plan(exec_config.dump_graph)
+        else :
+            print("developer need to set IXRT_DEBUG_TOOL before use dump_graph")
 
     context = engine.create_execution_context()
     assert context

@@ -289,6 +289,8 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                 ort_res.shape,
             )
             continue
+        if ort_res.dtype == np.dtype("float64"):
+            ort_res = ort_res.astype(np.float32)
         if ixrt_res.dtype != ort_res.dtype:
             compatible_types = [
                                 [np.dtype("int32"), np.dtype("int64")],
