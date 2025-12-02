@@ -599,21 +599,29 @@ def main():
             cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,
         )
         assert err == cudart.cudaError_t.cudaSuccess
+
+    err, stream = cudart.cudaStreamCreate()
+    assert err == cudart.cudaError_t.cudaSuccess
+
     if exec_config.warmUp > 0:
         for i in range(exec_config.warmUp):
             check_status(
-                context.execute_v2(dptrs),
+                context.execute_async_v2(dptrs, stream),
                 "Caught error during execution, please check logging message for detailed reason!",
             )
-    check_cuda_errors(cudart.cudaDeviceSynchronize())
+    check_cuda_errors(cudart.cudaStreamSynchronize(stream))
     start_time = time.time()
     for i in range(exec_config.iterations):
         check_status(
-            context.execute_v2(dptrs),
+            context.execute_async_v2(dptrs, stream),
             "Caught error during execution, please check logging message for detailed reason!",
         )
-    check_cuda_errors(cudart.cudaDeviceSynchronize())
+    check_cuda_errors(cudart.cudaStreamSynchronize(stream))
     end_time = time.time()
+
+    (err,) = cudart.cudaStreamDestroy(stream)
+    assert err == cudart.cudaError_t.cudaSuccess
+
     for output_binding in output_bindings:
         binding_name = output_binding["name"]
         size = output_binding["nbytes"]

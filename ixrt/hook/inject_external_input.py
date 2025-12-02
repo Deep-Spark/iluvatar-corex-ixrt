@@ -43,6 +43,15 @@ def inject_external_input(info, external_input):
         if iname in external_input:
             arr = np.load(external_input[iname])
             tensori = info.input_tensors[i]
+
+            # add padding
+            arr = add_padding(arr, tensori.paddings)
+            if tensori.shape != arr.shape:
+                print(
+                    f"Injected tensor has shape {arr.shape}, not match ixrt tensor shape {tensori.shape}"
+                )
+                raise
+
             # channel switch
             if tensori.format == ixrt.TensorFormat.HWC:
                 arr = chw2hwc(arr)
@@ -56,13 +65,7 @@ def inject_external_input(info, external_input):
                     raise Exception(
                         f"The external input tensor {external_input[iname]} has different dtype that IxRT required, given: {arr.dtype}, require: {ixrt.nptype(tensori.dtype)}"
                     )
-            # add padding
-            arr = add_padding(arr, tensori.paddings)
-            if tensori.shape != arr.shape:
-                print(
-                    f"Injected tensor has shape {arr.shape}, not match ixrt tensor shape {tensori.shape}"
-                )
-                raise
+
             (err,) = cudart.cudaMemcpy(
                 tensori.data,
                 arr,
