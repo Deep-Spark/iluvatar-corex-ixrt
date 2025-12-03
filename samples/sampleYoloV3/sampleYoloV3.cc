@@ -136,6 +136,7 @@ void InferenceYoloV3(const string &onnx_path, const string &demo_image_path, con
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
+    config->setFlag(nvinfer1::BuilderFlag::kFP16);
     auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
         std::cout << "Create config failed" << std::endl;
