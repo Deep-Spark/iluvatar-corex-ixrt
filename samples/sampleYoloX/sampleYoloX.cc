@@ -101,6 +101,7 @@ void YoloXOnnxTRTAPIExec(const string& model_path, const string& quant_param_pat
     }
     if (with_qdq) {
         config->setFlag(nvinfer1::BuilderFlag::kINT8);
+        config->setFlag(nvinfer1::BuilderFlag::kFP16);
     } else {
         config->setFlag(nvinfer1::BuilderFlag::kFP16);
     }

@@ -316,6 +316,7 @@ void InferenceYoloV3DynamicShape(const string &onnx_path, const string &demo_ima
         cout << "Create config success" << endl;
     }
     config->setFlag(nvinfer1::BuilderFlag::kINT8);
+    config->setFlag(nvinfer1::BuilderFlag::kFP16);
     // Dynamic Shape: use size range
     auto profile = builder->createOptimizationProfile();
     nvinfer1::Dims max_dims{4, {1, 3, 608, 608}};

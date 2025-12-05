@@ -117,17 +117,18 @@ def create_serialized_network_by_build(exec_config):
         onnx_path = converted_model
 
     ixrt_input_shapes, is_dynamic_model, input_type_dict, _ = get_io_info(exec_config)
-    if exec_config.precision not in ["fp16", "bf16", "int8", "fp32"]:
-        raise ValueError(f"unsupported precision {exec_config.precision}")
+    for exec_precision in exec_config.precision:
+        if exec_precision not in ["fp16", "bf16", "int8", "fp32"]:
+            raise ValueError(f"unsupported precision {exec_precision}")
 
     import_quantified_qdq_model = False
     internally_quantified_qdq_model = None
 
-    if exec_config.precision == "int8" and exec_config.quant_file is not None:
+    if "int8" in exec_config.precision and exec_config.quant_file is not None:
         if not os.path.isfile(exec_config.quant_file):
             raise ValueError(f" no such file path {exec_config.quant_file}")
 
-    elif exec_config.precision == "int8":
+    elif "int8" in exec_config.precision:
         onnx_model = onnx.load(onnx_path)
         graph = onnx_model.graph
         for node in graph.node:
@@ -177,7 +178,7 @@ def create_serialized_network_by_build(exec_config):
     parser = ixrt.OnnxParser(network, IXRT_LOGGER)
 
     parse_status = True
-    if exec_config.precision == "int8":
+    if "int8" in exec_config.precision:
         if import_quantified_qdq_model:
             parse_status = parser.parse_from_file(onnx_path)
         elif internally_quantified_qdq_model is not None:
@@ -185,14 +186,14 @@ def create_serialized_network_by_build(exec_config):
         else:
             parse_status = parser.parse_from_files(onnx_path, exec_config.quant_file)
         build_config.set_flag(ixrt.BuilderFlag.INT8)
-    elif exec_config.precision == "fp16":
+    else :
         parse_status = parser.parse_from_file(onnx_path)
+
+    if "fp16" in exec_config.precision:
         build_config.set_flag(ixrt.BuilderFlag.FP16)
-    elif exec_config.precision == "bf16":
-        parse_status = parser.parse_from_file(onnx_path)
+    if "bf16" in exec_config.precision:
         build_config.set_flag(ixrt.BuilderFlag.BF16)
-    else:
-        parse_status = parser.parse_from_file(onnx_path)
+
     assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()
     if is_dynamic_model:

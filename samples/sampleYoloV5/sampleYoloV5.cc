@@ -87,10 +87,12 @@ void InferenceYoloV5(const string& precision, const string& onnx_path, const str
         cout << "Create config success" << endl;
     }
 
-    if (precision == "int8")
+    if (precision == "int8") {
         config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    else
         config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    } else {
+        config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    }
 
     auto parser = UPtr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, logger));
     if (not parser) {
