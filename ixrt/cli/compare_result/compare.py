@@ -229,13 +229,20 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                 ortpath = ort_result[ort_edge_name].saved_path
                 ort_res = np.load(ortpath)
                 if ixrt_res.dtype != ort_res.dtype:
-                    compatible_types = [np.dtype("int32"), np.dtype("int64")]
+                    int_compatible_types = [np.dtype("int32"), np.dtype("int64")]
+                    float_compatible_types = [np.dtype("float16"), np.dtype("float32"), np.dtype("float64")]
                     if (
-                        ixrt_res.dtype in compatible_types
-                        and ort_res.dtype in compatible_types
+                        ixrt_res.dtype in int_compatible_types
+                        and ort_res.dtype in int_compatible_types
                     ):
                         ixrt_res = ixrt_res.astype(np.int64)
                         ort_res = ort_res.astype(np.int64)
+                    elif (
+                        ixrt_res.dtype in float_compatible_types
+                        and ort_res.dtype in float_compatible_types
+                    ):
+                        ixrt_res = ixrt_res.astype(np.float64)
+                        ort_res = ort_res.astype(np.float64)
                     else:
                         ort_edge_name = ""
 
@@ -252,8 +259,8 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
             ortpath = ort_result[ort_edge_name].saved_path
             ort_res = np.load(ortpath)
         if ixrt_res.shape != ort_res.shape:
-            
-            if len(ixrt_res.shape) != len(ort_res.shape): 
+
+            if len(ixrt_res.shape) != len(ort_res.shape):
                 print(
                     "incompatible shape between IxRT and Ort for edge:",
                     edge_name,
@@ -263,13 +270,13 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                     ort_res.shape,
                 )
                 continue
-            
+
             else:
                 min_shape = tuple(min(s1, s2) for s1, s2 in zip(ixrt_res.shape, ort_res.shape))
                 slices = tuple(slice(0, s) for s in min_shape)
                 ort_res = ort_res[slices]
                 ixrt_res = ixrt_res[slices]
-                
+
                 print(
                     "Pleace check incompatible shape between IxRT and Ort for edge:",
                     edge_name,
@@ -278,7 +285,7 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                     "ort:",
                     ort_res.shape,
                 )
-                
+
         if ixrt_res.size == 0 and ort_res.size == 0:
             print(
                 "empty data in bath IxRT and Ort for edge:",
@@ -292,13 +299,20 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
         if ort_res.dtype == np.dtype("float64"):
             ort_res = ort_res.astype(np.float32)
         if ixrt_res.dtype != ort_res.dtype:
-            compatible_types = [
-                                [np.dtype("int32"), np.dtype("int64")],
-                                [np.dtype("float32"), np.dtype("float16")]
-                               ]
-            if [ixrt_res.dtype, ort_res.dtype] in compatible_types:
+            int_compatible_types = [np.dtype("int32"), np.dtype("int64")]
+            float_compatible_types = [np.dtype("float16"), np.dtype("float32"), np.dtype("float64")]
+            if (
+                ixrt_res.dtype in int_compatible_types
+                and ort_res.dtype in int_compatible_types
+            ):
                 ixrt_res = ixrt_res.astype(np.int64)
                 ort_res = ort_res.astype(np.int64)
+            elif (
+                ixrt_res.dtype in float_compatible_types
+                and ort_res.dtype in float_compatible_types
+            ):
+                ixrt_res = ixrt_res.astype(np.float64)
+                ort_res = ort_res.astype(np.float64)
             else:
                 raise Exception(
                     "incompatible dtype between IxRT and Ort for edge:",
