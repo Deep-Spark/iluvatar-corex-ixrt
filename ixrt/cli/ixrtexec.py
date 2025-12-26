@@ -167,8 +167,16 @@ def create_serialized_network_by_build(exec_config):
 
     IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
     builder = ixrt.Builder(IXRT_LOGGER)
-    EXPLICIT_BATCH = 1 << (int)(ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-    network = builder.create_network(EXPLICIT_BATCH)
+
+    network_flags = 0
+    network_flags |= 1 << int(
+        ixrt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH
+    )
+    if exec_config.strongly_typed:
+        network_flags |= 1 << int(
+            ixrt.NetworkDefinitionCreationFlag.STRONGLY_TYPED
+        )
+    network = builder.create_network(flags=network_flags)
     build_config = builder.create_builder_config()
     timing_cache = create_timing_cache(build_config, exec_config.timingCacheFile)
     if timing_cache:
@@ -185,14 +193,16 @@ def create_serialized_network_by_build(exec_config):
             parse_status = parser.parse_from_file(internally_quantified_qdq_model)
         else:
             parse_status = parser.parse_from_files(onnx_path, exec_config.quant_file)
-        build_config.set_flag(ixrt.BuilderFlag.INT8)
     else :
         parse_status = parser.parse_from_file(onnx_path)
 
-    if "fp16" in exec_config.precision:
-        build_config.set_flag(ixrt.BuilderFlag.FP16)
-    if "bf16" in exec_config.precision:
-        build_config.set_flag(ixrt.BuilderFlag.BF16)
+    if not exec_config.strongly_typed:
+        if "int8" in exec_config.precision:
+            build_config.set_flag(ixrt.BuilderFlag.INT8)
+        if "fp16" in exec_config.precision:
+            build_config.set_flag(ixrt.BuilderFlag.FP16)
+        if "bf16" in exec_config.precision:
+            build_config.set_flag(ixrt.BuilderFlag.BF16)
 
     assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()

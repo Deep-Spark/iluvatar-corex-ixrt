@@ -233,6 +233,12 @@ def args_parser():
         nargs="+",
         help="Used in accuracy verification. When specified, watch the specified edge from producing until consuming, in order to verify memory crash",
     )
+    parser.add_argument(
+        "--strongly_typed",
+        action="store_true",
+        help="Create a strongly typed network. (default = disabled)",
+    )
+
     config = parser.parse_args()
     return config
 
