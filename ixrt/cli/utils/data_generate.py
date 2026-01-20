@@ -61,7 +61,10 @@ def generate_input_buffers(data_bindings, custom_buffers=None):
 
         if custom_buffers:
             if _name in custom_buffers:
-                buffer = np.fromfile(custom_buffers[_name], _dtype).reshape(_shape)
+                if (custom_buffers[_name].endswith(".npy")):
+                    buffer = np.load(custom_buffers[_name]).astype(_dtype)
+                else:
+                    buffer = np.fromfile(custom_buffers[_name], _dtype).reshape(_shape)
         data_buffer[_name] = buffer
     return data_buffer
 
