@@ -128,7 +128,7 @@ def standardize_tensor(a, b):
     # if a number both calculated by ixrt or ort is inf or nan, change it to 0
     mask_a = np.isinf(a) | np.isnan(a)
     mask_b = np.isinf(b) | np.isnan(b)
-    combined_mask = mask_a | mask_b
+    combined_mask = mask_a & mask_b
     a[combined_mask] = 0
     b[combined_mask] = 0
     return a, b
