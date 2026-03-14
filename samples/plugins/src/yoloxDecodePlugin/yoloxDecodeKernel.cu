@@ -39,7 +39,7 @@ __global__ void YoloxDecoderForward(int32_t const nthreads, T const* cls_prob, T
     const int32_t batchIdx = tid / hw;
     const int32_t pos = tid % hw;
     const int32_t h_idx = pos / width;
-    const int32_t w_idx = pos % height;
+    const int32_t w_idx = pos % width;
 
     const int32_t offset = batchIdx * height * width;
     const int32_t cls_prob_offset = numClass * offset;
