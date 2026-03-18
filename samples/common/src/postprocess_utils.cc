@@ -152,7 +152,7 @@ int get_yolo_decode_detections(float* input_data, int32_t num_anchor, int32_t de
             }
             // if (objectness <= thresh) continue;   // incorrect behavior for
             // Nan values
-            if (objectness > thresh) {
+            if ((objectness > thresh) && (class_index >= 0) && (class_index < num_class)) {
                 DetectionResult cache;
                 cache.bbox.x = center_x * 1.0 / netw;
                 cache.bbox.y = center_y * 1.0 / neth;
