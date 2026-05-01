@@ -238,6 +238,7 @@ def args_parser():
         action="store_true",
         help="Create a strongly typed network. (default = disabled)",
     )
+    parser.add_argument("--gpus", type=int, nargs="+", default=None, help="GPU IDs to use")
 
     config = parser.parse_args()
     return config

@@ -20,18 +20,19 @@ def generate_data(data_name, data_shape, data_types):
         print("unknown datatypes of ", data_name)
     else:
         data_type = str(data_types[data_name])
+        normal_samples = np.clip(np.random.normal(0.5, 0.25, data_shape), 0.0, 1.0)
         if data_type == "float32":
-            np_data = np.ones(data_shape, np.float32)
+            np_data = normal_samples.astype(np.float32)
         elif data_type == "float16":
-            np_data = np.ones(data_shape, np.float16)
+            np_data = normal_samples.astype(np.float16)
         elif data_type == "float64":
-            np_data = np.ones(data_shape, np.float64)
+            np_data = normal_samples.astype(np.float64)
         elif data_type == "int8":
-            np_data = np.ones(data_shape, np.int8)
+            np_data = np.round(normal_samples).astype(np.int8)
         elif data_type == "int32":
-            np_data = np.ones(data_shape, np.int32)
+            np_data = np.round(normal_samples).astype(np.int32)
         elif data_type == "int64":
-            np_data = np.ones(data_shape, np.int64)
+            np_data = np.round(normal_samples).astype(np.int64)
         else:
             raise ValueError(f"unsupported data type {data_type}")
     return np_data
@@ -52,10 +53,11 @@ def generate_input_buffers(data_bindings, custom_buffers=None):
         _name = data_binding["name"]
         _shape = data_binding["shape"]
         _dtype = data_binding["dtype"]
+        normal_samples = np.clip(np.random.normal(0.5, 0.25, _shape), 0.0, 1.0)
         if _dtype in (np.float32, np.float16, np.float64):
-            buffer = np.random.rand(*_shape).astype(_dtype)
+            buffer = normal_samples.astype(_dtype)
         elif _dtype in (np.int8, np.int16, np.int32, np.int64, np.bool_):
-            buffer = np.ones(_shape, _dtype)
+            buffer = np.round(normal_samples).astype(_dtype)
         else:
             raise Exception("Not supported data initialization for", _dtype)
 

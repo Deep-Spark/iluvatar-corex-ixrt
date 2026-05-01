@@ -20,3 +20,4 @@ from .exec_parser import *
 from .io_info import *
 from .quant import dequant, quant
 from .tensor import add_padding, remove_padding
+from .trt_inference_work import inference_worker

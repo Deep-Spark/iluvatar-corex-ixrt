@@ -274,8 +274,6 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
             else:
                 min_shape = tuple(min(s1, s2) for s1, s2 in zip(ixrt_res.shape, ort_res.shape))
                 slices = tuple(slice(0, s) for s in min_shape)
-                ort_res = ort_res[slices]
-                ixrt_res = ixrt_res[slices]
 
                 print(
                     "Pleace check incompatible shape between IxRT and Ort for edge:",
@@ -285,6 +283,8 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                     "ort:",
                     ort_res.shape,
                 )
+                ort_res = ort_res[slices]
+                ixrt_res = ixrt_res[slices]
 
         if ixrt_res.size == 0 and ort_res.size == 0:
             print(

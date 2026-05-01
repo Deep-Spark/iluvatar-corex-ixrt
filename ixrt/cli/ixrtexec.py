@@ -43,7 +43,9 @@ from ixrt.cli.utils import (
     get_io_info,
     parse_custom_inputs,
     parse_inference_input_shapes,
+    inference_worker,
 )
+import threading
 
 from ixrt.hook import create_hook
 import fcntl
@@ -238,8 +240,10 @@ def read_profiler_data(profiler_context):
 
     layer_names = lines[3 : 3 + layers_num]
     layer_ids = lines[3 + layers_num : 3 + 2 * layers_num]
-    layer_end = 3 + 2 * layers_num + loops_num * layers_num
-    layer_times = lines[3 + 2 * layers_num : layer_end]
+    layer_input_shapes = lines[3 + 2 * layers_num : 3 + 3 * layers_num]
+    layer_mem_traffic = lines[3 + 3 * layers_num : 3 + 4 * layers_num]
+    layer_end = 3 + 4 * layers_num + loops_num * layers_num
+    layer_times = lines[3 + 4 * layers_num : layer_end]
     kernel_names = lines[layer_end : layer_end + kernels_num]
     kernel_layer_ids = lines[layer_end + kernels_num : layer_end + 2 * kernels_num]
     kernel_times = lines[
@@ -251,6 +255,8 @@ def read_profiler_data(profiler_context):
 
     layer_names = [name.strip() for name in layer_names]
     layer_ids = [int(id_.strip()) for id_ in layer_ids]
+    layer_input_shapes = [shape.strip().split(";") for shape in layer_input_shapes]
+    layer_mem_traffic = [int(mem_traffic.strip()) for mem_traffic in layer_mem_traffic]
     layer_times = [int(time.strip()) for time in layer_times]
     kernel_names = [name.strip() for name in kernel_names]
     kernel_layer_ids = [int(id_.strip()) for id_ in kernel_layer_ids]
@@ -259,6 +265,8 @@ def read_profiler_data(profiler_context):
     return [
         layer_names,
         layer_ids,
+        layer_input_shapes,
+        layer_mem_traffic,
         layer_times,
         kernel_names,
         kernel_layer_ids,
@@ -270,6 +278,8 @@ def export_profiler_data(exec_config, infos):
     (
         layer_names,
         layer_ids,
+        layer_input_shapes,
+        layer_mem_traffic,
         layer_times,
         kernel_names,
         kernel_layer_ids,
@@ -294,6 +304,8 @@ def export_profiler_data(exec_config, infos):
         np.median(layer_datas[exec_config.warmUp :, :], axis=0) / 1000.0 / 1000.0
     )
     layer_sum_time_percent = layer_sum_time / np.sum(layer_sum_time)
+
+    layer_band_width = np.array(layer_mem_traffic) / 1024.0 / 1024.0 / 1024.0 * 1000.0 / layer_avg_time
 
     # process kernel data
     kernel_name = [""] * kernel_len
@@ -335,6 +347,8 @@ def export_profiler_data(exec_config, infos):
                 layer_avg_time[i],
                 layer_medium_time[i],
                 layer_sum_time_percent[i] * 100,
+                layer_band_width[i],
+                layer_input_shapes[i],
             ]
         )
     print(f"\n=== Profile Layer ({exec_config.iterations} iterations) ===")
@@ -349,6 +363,8 @@ def export_profiler_data(exec_config, infos):
                 "Avg. Time(ms)",
                 "Median Time(ms)",
                 "Time(%)",
+                "Band Width(GB/s))",
+                "Input Shapes",
             ],
         )
     )
@@ -393,10 +409,10 @@ def export_profiler_data(exec_config, infos):
     # write to csv file
     if exec_config.export_profiler:
         with open(exec_config.export_profiler, "w+") as f:
-            f.write(f"Layer Name,Time(ms),Avg. Time(ms),Median Time(ms),Time(%)\n")
+            f.write(f"Layer Name,Time(ms),Avg. Time(ms),Median Time(ms),Time(%) Band Width(GB/s),Input Shapes\n")
             for i in range(layer_len):
                 f.write(
-                    f"{layer_names[i]},{layer_sum_time[i]:.3f},{layer_avg_time[i]:.3f},{layer_medium_time[i]:.3f},{layer_sum_time_percent[i] * 100:.2f}\n"
+                    f"{layer_names[i]},{layer_sum_time[i]:.3f},{layer_avg_time[i]:.3f},{layer_medium_time[i]:.3f},{layer_sum_time_percent[i] * 100:.2f}, {layer_band_width[i]:.2f},{layer_input_shapes[i]}\n"
                 )
             f.write("\n\n")
             f.write(
@@ -482,6 +498,51 @@ def main():
     if exec_config.run_profiler:
         os.environ["IXRT_USE_PROFILER"] = "1"
     serialized_network = create_engine(exec_config)
+    custom_buffers = parse_custom_inputs(exec_config)
+    #  parse input shapes
+    inference_input_shapes = parse_inference_input_shapes(exec_config)
+    _, device_count = cuda.cuDeviceGetCount()
+    if exec_config.gpus:
+        if len(exec_config.gpus) > 1:
+            print("Using multiple GPUs only provides performance data")
+            results_dict = {}
+            threads = []
+
+            for i, gpu_id in enumerate(exec_config.gpus):
+                if gpu_id >= 0 and (gpu_id < device_count) :
+                    thread = threading.Thread(
+                        target=inference_worker,
+                        args=(IXRT_LOGGER, serialized_network, gpu_id, exec_config.warmUp, exec_config.iterations, results_dict, i, custom_buffers, inference_input_shapes)
+                    )
+                    threads.append(thread)
+                else:
+                    print("Ignore unsupport gpu id: ", gpu_id)
+                    continue
+
+            print("\nStarting parallel inference threads...")
+            start_time = time.perf_counter()
+
+            for thread in threads:
+                thread.start()
+
+            for thread in threads:
+                thread.join()
+            for thread_id, result in sorted(results_dict.items()):
+                if "error" in result:
+                    print(f"\nThread {thread_id} (GPU {exec_config.gpus[thread_id]}): ERROR - {result['error']}")
+                else:
+                    print(f"\nThread {thread_id} (GPU {result['gpu_id']}):")
+                    print(f"  Iterations: {result['iterations']}")
+                    print(f"  fps: {result['fps']} with batchsize {result['bsz']}")
+                    print(f"  Throughput: {result['throughput']} qps")
+            return
+        else:
+            gpu_id = exec_config.gpus[0]
+            if gpu_id >= 0 and (gpu_id < device_count) :
+                cudart.cudaSetDevice(gpu_id)
+            else:
+                print("Ignore unsupport gpu id: ", gpu_id)
+                return
     runtime = ixrt.Runtime(IXRT_LOGGER)
     engine = runtime.deserialize_cuda_engine(serialized_network)
     assert engine
@@ -519,7 +580,6 @@ def main():
             ixrt.ExecutionHookFlag.PRERUN,
         )
     # Setup I/O bindings
-    inference_input_shapes = parse_inference_input_shapes(exec_config)
     bsz = None
     input_bindings = []
     output_bindings = []
@@ -591,7 +651,7 @@ def main():
         else:
             output_bindings.append(binding_data)
 
-    input_buffers = generate_input_buffers(input_bindings, parse_custom_inputs(exec_config))
+    input_buffers = generate_input_buffers(input_bindings, custom_buffers)
     output_buffers = generate_output_buffers(output_bindings)
     if exec_config.verify_acc:
         from ixrt.cli.compare_result.ort_layer_saver import OrtLayerSaver
@@ -614,7 +674,7 @@ def main():
     err, stream = cudart.cudaStreamCreate()
     assert err == cudart.cudaError_t.cudaSuccess
 
-    if exec_config.warmUp > 0:
+    if exec_config.warmUp > 0: 
         for i in range(exec_config.warmUp):
             check_status(
                 context.execute_async_v2(dptrs, stream),
