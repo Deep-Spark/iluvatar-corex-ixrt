@@ -88,22 +88,3 @@ def generate_dummy_calibration_loader(data_shapes, data_types):
         drop_last=False,
         num_workers=1,
     )
-
-
-def generate_quantified_model(
-    onnx_model, data_shapes, data_types, save_quant_onnx_path, save_quant_params_path
-):
-    from ixrt.deploy.api import static_quantize
-
-    calibration_dataloader = generate_dummy_calibration_loader(data_shapes, data_types)
-
-    static_quantize(
-        onnx_model,
-        calibration_dataloader,
-        disable_bias_correction=True,
-        analyze=False,
-        save_quant_onnx_path=save_quant_onnx_path,
-        save_quant_params_path=save_quant_params_path,
-        data_preprocess=lambda x: x[0].cuda(),
-    )
-    del calibration_dataloader

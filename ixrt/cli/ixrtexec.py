@@ -38,7 +38,6 @@ from ixrt.cli.utils import (
     check_cuda_errors,
     generate_input_buffers,
     generate_output_buffers,
-    generate_quantified_model,
     get_cuda_error_enum,
     get_io_info,
     parse_custom_inputs,
@@ -124,7 +123,6 @@ def create_serialized_network_by_build(exec_config):
             raise ValueError(f"unsupported precision {exec_precision}")
 
     import_quantified_qdq_model = False
-    internally_quantified_qdq_model = None
 
     if "int8" in exec_config.precision and exec_config.quant_file is not None:
         if not os.path.isfile(exec_config.quant_file):
@@ -138,33 +136,11 @@ def create_serialized_network_by_build(exec_config):
                 import_quantified_qdq_model = True
                 break
         if not import_quantified_qdq_model:
-            calibration_tensor_shape = {}
-            dynamic_min_opt_max_shape = (
-                {}
-                if "dynamic_input" not in ixrt_input_shapes
-                else ixrt_input_shapes["dynamic_input"]
+            raise ValueError(
+                "int8 precision requires a pre-quantized QDQ ONNX model or a "
+                "quantization parameter file (--quant_file). "
+                "Please provide a QDQ model or a quant params file."
             )
-            for tensor_name in ixrt_input_shapes:
-                if tensor_name == "dynamic_input":
-                    continue
-                if tensor_name in dynamic_min_opt_max_shape:
-                    calibration_tensor_shape[tensor_name] = dynamic_min_opt_max_shape[
-                        tensor_name
-                    ].min_shape
-                else:
-                    calibration_tensor_shape[tensor_name] = ixrt_input_shapes[
-                        tensor_name
-                    ]
-            internally_quantified_qdq_model = ".tmp.quant.onnx"
-            internally_quantified_qdq_model_params = ".tmp.quant.params.json"
-            generate_quantified_model(
-                onnx_path,
-                calibration_tensor_shape,
-                input_type_dict,
-                internally_quantified_qdq_model,
-                internally_quantified_qdq_model_params,
-            )
-            restore_inputs_dimensions(onnx_path, internally_quantified_qdq_model)
 
 
     IXRT_LOGGER = ixrt.Logger(log_info_dict[exec_config.log_level])
@@ -191,8 +167,6 @@ def create_serialized_network_by_build(exec_config):
     if "int8" in exec_config.precision:
         if import_quantified_qdq_model:
             parse_status = parser.parse_from_file(onnx_path)
-        elif internally_quantified_qdq_model is not None:
-            parse_status = parser.parse_from_file(internally_quantified_qdq_model)
         else:
             parse_status = parser.parse_from_files(onnx_path, exec_config.quant_file)
     else :
