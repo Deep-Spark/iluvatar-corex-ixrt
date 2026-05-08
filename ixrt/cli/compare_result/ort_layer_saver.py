@@ -14,6 +14,8 @@
 #    under the License.
 #
 
+import os
+import uuid
 from collections import OrderedDict
 
 import numpy as np
@@ -40,7 +42,10 @@ class OrtLayerSaver:
         self.inference_result = OrderedDict()
 
     def save(self):
-        raw_onnx = onnx.load(self.config.onnx_path)
+        # Use load_external_data=False so the proto stays small (only the
+        # graph structure, not the multi-GB weight blobs). External data
+        # files remain on disk and OnnxRuntime resolves them by path.
+        raw_onnx = onnx.load(self.config.onnx_path, load_external_data=False)
         # 1. add extend output
         for node in raw_onnx.graph.node:
             for output in node.output:
@@ -50,9 +55,24 @@ class OrtLayerSaver:
             providers = ["CPUExecutionProvider"]
         else:
             providers = ["CUDAExecutionProvider"]
-        ort_session = onnxruntime.InferenceSession(
-            raw_onnx.SerializeToString(), providers=providers
+
+        # Save the extended model to a temporary file and let OnnxRuntime
+        # load from the file path. This avoids SerializeToString() which
+        # fails for models exceeding the protobuf 2 GB limit.
+        # Saving to the same directory as the original model ensures
+        # external data relative paths resolve correctly.
+        model_dir = os.path.dirname(os.path.abspath(self.config.onnx_path))
+        tmp_onnx_path = os.path.join(
+            model_dir, f".ort_extended_{uuid.uuid4().hex}.onnx"
         )
+        try:
+            onnx.save(raw_onnx, tmp_onnx_path)
+            ort_session = onnxruntime.InferenceSession(
+                tmp_onnx_path, providers=providers
+            )
+        finally:
+            if os.path.exists(tmp_onnx_path):
+                os.remove(tmp_onnx_path)
 
         input_buffers = {}
         for input in ort_session.get_inputs():
