@@ -7,7 +7,7 @@ set(OPENSOURCE_SAMPLES_LIST
      sampleCondition
      sampleYoloV3
 )
-
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 add_subdirectory(common)
 add_subdirectory(plugins)
 foreach(SAMPLE_ITER ${OPENSOURCE_SAMPLES_LIST})
