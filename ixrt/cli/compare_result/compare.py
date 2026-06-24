@@ -15,12 +15,13 @@
 #
 
 import functools
+from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
 from tabulate import tabulate
 
-from .formatting import colorize, green, num2str, red
+from .formatting import colorize, green, num2str, red, yellow
 
 try:
     from scipy import spatial
@@ -45,6 +46,98 @@ def get_array_abnormal_state(arr):
     elif np.any(np.isinf(arr)):
         return AbnormState.INF_TENSOR
     return AbnormState.NORMAL_TENSOR
+
+
+PRECISION_RANGES = {
+    np.dtype(np.float16): (-65504.0, 65504.0),
+    np.dtype(np.float32): (np.finfo(np.float32).min, np.finfo(np.float32).max),
+    np.dtype(np.int8): (-128, 127),
+    np.dtype(np.uint8): (0, 255),
+    np.dtype(np.int16): (-32768, 32767),
+    np.dtype(np.uint16): (0, 65535),
+}
+
+PRECISION_NAME_TO_RANGE = {
+    "fp16": (-65504.0, 65504.0),
+    "fp32": (np.finfo(np.float32).min, np.finfo(np.float32).max),
+    "bf16": (-3.3895313892515355e38, 3.3895313892515355e38),
+    "int8": (-128.0, 127.0),
+}
+
+
+@dataclass
+class OverflowInfo:
+    has_precision_overflow: bool
+    has_computation_error: bool
+    precision_overflow_count: int
+    computation_error_count: int
+    skipped_count: int
+    ixrt_dtype: np.dtype
+    total_elements: int
+    overflow_ratio: float
+    overflow_summary: str
+
+
+def check_precision_overflow(ixrt_arr, ort_arr, precision_range=None):
+    ixrt_f = ixrt_arr.astype(np.float64).flatten()
+    ort_f = ort_arr.astype(np.float64).flatten()
+
+    total = ixrt_f.size
+    if total == 0:
+        return OverflowInfo(
+            False, False, 0, 0, 0, ixrt_arr.dtype, 0, 0.0, "empty tensor"
+        )
+
+    if precision_range is None:
+        precision_range = PRECISION_RANGES.get(
+            np.dtype(ixrt_arr.dtype),
+            (np.finfo(np.float64).min, np.finfo(np.float64).max),
+        )
+    vmin, vmax = precision_range
+
+    ixrt_abnormal = np.isinf(ixrt_f) | np.isnan(ixrt_f)
+    ort_abnormal = np.isinf(ort_f) | np.isnan(ort_f)
+
+    # Case 1: both Inf/NaN at same position → not an error
+    skipped_count = int((ixrt_abnormal & ort_abnormal).sum())
+
+    # Case 2: ixrt Inf/NaN, ort finite
+    ixrt_bad_ort_ok = ixrt_abnormal & ~ort_abnormal
+
+    # Check whether ort value exceeds the ixrt precision range
+    ort_exceeds_range = (ort_f > vmax) | (ort_f < vmin)
+    precision_overflow_count = int((ort_exceeds_range & ixrt_bad_ort_ok).sum())
+    computation_error_count = int((~ort_exceeds_range & ixrt_bad_ort_ok).sum())
+
+    has_prec_overflow = precision_overflow_count > 0
+    has_comp_error = computation_error_count > 0
+    abnormal_total = precision_overflow_count + computation_error_count
+    ratio = abnormal_total / total
+
+    parts = []
+    if has_prec_overflow:
+        parts.append(
+            f"Precision overflow: {precision_overflow_count}/{total} "
+            f"(ort exceeds [{vmin:g}, {vmax:g}])"
+        )
+    if has_comp_error:
+        parts.append(
+            f"Computation error: {computation_error_count}/{total} "
+            f"(ixrt Inf/NaN but ort within [{vmin:g}, {vmax:g}])"
+        )
+    summary = "; ".join(parts) if parts else "No overflow"
+
+    return OverflowInfo(
+        has_precision_overflow=has_prec_overflow,
+        has_computation_error=has_comp_error,
+        precision_overflow_count=precision_overflow_count,
+        computation_error_count=computation_error_count,
+        skipped_count=skipped_count,
+        ixrt_dtype=np.dtype(ixrt_arr.dtype),
+        total_elements=total,
+        overflow_ratio=ratio,
+        overflow_summary=summary,
+    )
 
 
 def volume(obj):
@@ -323,6 +416,16 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
                     ort_res.dtype,
                 )
 
+        ixrt_precision_range = None
+        for prec in config.precision:
+            if prec in PRECISION_NAME_TO_RANGE:
+                ixrt_precision_range = PRECISION_NAME_TO_RANGE[prec]
+                break
+
+        overflow_info = check_precision_overflow(
+            ixrt_res, ort_res, precision_range=ixrt_precision_range
+        )
+
         (
             diff_max,
             diff_rel_avg,
@@ -367,12 +470,24 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
             diff_sum_str,
             cosine_sim_str,
         )
-        # print(layer_result_str)
         measurement_str = "---- Relative Diff Max ----\n{}\n---- Absolute Diff Max ----\n{}\n---- Absolute Diff Sum ----\n{}\n---- Cosine Similarity ----\n{}".format(
             diff_rel_avg_str, diff_max_str, diff_sum_str, cosine_sim_str
         )
         if not is_ixrt_output_right:
             measurement_str += "\n" + "".join([diff_hist_str, rel_diff_hist_str])
+
+        has_overflow = (
+            overflow_info.has_precision_overflow
+            or overflow_info.has_computation_error
+        )
+        if has_overflow:
+            measurement_str += "\n" + yellow(
+                "[OVERFLOW] " + overflow_info.overflow_summary
+            )
+            error_recorder.append(
+                edge_name + ": " + overflow_info.overflow_summary
+            )
+
         form_data.append(
             [
                 layer_result,

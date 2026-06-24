@@ -22,6 +22,10 @@ def red(s):
     return "\033[31m" + s + "\033[0m"
 
 
+def yellow(s):
+    return "\033[33m" + s + "\033[0m"
+
+
 def colorize(s, condition):
     if condition:
         return green(str(s))

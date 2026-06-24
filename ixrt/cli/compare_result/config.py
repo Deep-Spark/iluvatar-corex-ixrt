@@ -35,6 +35,7 @@ class AccCompConfig:
     ort_cpu: bool
     inject_tensors = {}
     only_verify_outputs: bool
+    precision = ["fp32"]
 
 
 def parse_inject_tensors(exec_config, comp_config):
@@ -77,6 +78,7 @@ def create_acc_comp_config(exec_config):
     result.inject_tensors = {}
     result.only_verify_outputs = exec_config.only_verify_outputs
     result.tensors_to_watch = exec_config.watch
+    result.precision = exec_config.precision
     os.makedirs(result.ixrt, exist_ok=True)
     os.makedirs(result.ort, exist_ok=True)
     parse_inject_tensors(exec_config, result)
