@@ -30,7 +30,6 @@ static const int kWarpSize = 64;
 static const dim3 kMaxBlockDimension = {4096, 4096, 64};
 static const dim3 kMaxGridDimension = {4294967295, 65536, 65536};
 static const int kNbThreadsPerBlockGainBestPerformance = 1024;
-static const int kMaxSharedMemSizePerBlock = (128 * 1024 * 4);
 static const int kNbSmemLane = 64;
 static const int kNbBytesPerSmemLane = 4;
 #else
@@ -40,7 +39,6 @@ static const int kWarpSize = 32;
 static const dim3 kMaxBlockDimension = {1024, 1024, 64};
 static const dim3 kMaxGridDimension = {2147483647, 65535, 65535};
 static const int kNbThreadsPerBlockGainBestPerformance = 256;
-static const int kMaxSharedMemSizePerBlock = 48 * 1024 * 4;
 static const int kNbSmemLane = 32;
 static const int kNbBytesPerSmemLane = 4;
 #endif
