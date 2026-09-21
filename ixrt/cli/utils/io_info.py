@@ -24,24 +24,22 @@ from .exec_parser import onnx_parser
 
 
 def convert_onnx_type(onnx_data_type):
-    if onnx_data_type == "FLOAT":
-        return "float32"
-    elif onnx_data_type == "FLOAT16":
-        return "float16"
-    elif onnx_data_type == "INT8":
-        return "int8"
-    elif onnx_data_type == "DOUBLE":
-        return "float64"
-    elif onnx_data_type == "INT32":
-        return "int32"
-    elif onnx_data_type == "INT64":
-        return "int64"
-    elif onnx_data_type == "BOOL":
-        return "bool"
-    elif onnx_data_type == "UINT8":
-        return "uint8"
-    else:
+    mapping = {
+        "FLOAT": "float32",
+        "FLOAT16": "float16",
+        "BFLOAT16": "bfloat16",
+        "DOUBLE": "float64",
+        "INT8": "int8",
+        "UINT8": "uint8",
+        "INT16": "int16",
+        "UINT16": "uint16",
+        "INT32": "int32",
+        "INT64": "int64",
+        "BOOL": "bool",
+    }
+    if onnx_data_type not in mapping:
         raise ValueError(f"unsupported onnx type {onnx_data_type}")
+    return mapping[onnx_data_type]
 
 
 class DynamicDescriptor:

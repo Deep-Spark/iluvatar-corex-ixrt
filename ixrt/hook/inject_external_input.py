@@ -31,24 +31,54 @@ def chw2hwc(arr):
     return np.ascontiguousarray(arr)
 
 
-def inject_external_input(info, external_input):
+def float_to_bf16_bits(array):
+    return (array.astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
+
+
+def _output_name_alias(name):
+    if name.endswith("_output_0"):
+        return name[:-2]
+    if name.endswith("_output"):
+        return name + "_0"
+    return None
+
+
+def _alias_pair_occupied(name, alias, universes):
+    return any(name in universe and alias in universe for universe in universes)
+
+
+def resolve_inject_path(iname, external_input, name_universes=()):
+    if iname in external_input:
+        return external_input[iname]
+    alias = _output_name_alias(iname)
+    if alias is None or alias not in external_input:
+        return None
+    if _alias_pair_occupied(iname, alias, name_universes):
+        return None
+    return external_input[alias]
+
+
+def inject_external_input(info, external_input, name_universes=()):
     """Inject external data with linear format to IxRT runtime input
 
     :param info:
     :param external_input: dict[str, str], key is edge name, value is path
     :return:
     """
+    layer_names = set(info.input_names) | set(info.output_names)
+    universes = tuple(name_universes or ()) + ((layer_names,) if layer_names else ())
     for i in range(info.nb_inputs):
         iname = info.input_names[i]
-        if iname in external_input:
-            arr = np.load(external_input[iname])
+        path = resolve_inject_path(iname, external_input, universes)
+        if path is not None:
+            arr = np.load(path)
             tensori = info.input_tensors[i]
 
             # add padding
             arr = add_padding(arr, tensori.paddings)
-            if tensori.shape != arr.shape:
+            if tuple(tensori.shape) != tuple(arr.shape):
                 print(
-                    f"Injected tensor has shape {arr.shape}, not match ixrt tensor shape {tensori.shape}"
+                    f"Injected tensor {iname} has shape {arr.shape}, not match ixrt tensor shape {tensori.shape}"
                 )
                 raise
 
@@ -58,14 +88,18 @@ def inject_external_input(info, external_input):
             # type conversion
             if tensori.dtype == ixrt.DataType.HALF:
                 arr = arr.astype(np.float16)
+            elif tensori.dtype == ixrt.DataType.BF16:
+                if arr.dtype != np.uint16:
+                    arr = float_to_bf16_bits(arr)
             elif tensori.dtype == ixrt.DataType.INT8:
                 arr = quant(arr, tensori.scale)
             else:
                 if not ixrt.nptype(tensori.dtype) == arr.dtype:
                     raise Exception(
-                        f"The external input tensor {external_input[iname]} has different dtype that IxRT required, given: {arr.dtype}, require: {ixrt.nptype(tensori.dtype)}"
+                        f"The external input tensor {path} has different dtype that IxRT required, given: {arr.dtype}, require: {ixrt.nptype(tensori.dtype)}"
                     )
 
+            arr = np.ascontiguousarray(arr)
             (err,) = cudart.cudaMemcpy(
                 tensori.data,
                 arr,

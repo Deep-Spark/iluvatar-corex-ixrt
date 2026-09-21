@@ -18,7 +18,12 @@ import os
 import tempfile
 from os.path import join
 
-from .utils import get_edge_path
+from .utils import (
+    alias_pair_occupied,
+    collect_onnx_tensor_names,
+    get_edge_path,
+    output_name_alias,
+)
 
 __all__ = ["create_acc_comp_config"]
 
@@ -35,7 +40,9 @@ class AccCompConfig:
     ort_cpu: bool
     inject_tensors = {}
     only_verify_outputs: bool
+    verify_tensors = None
     precision = ["fp32"]
+    alias_name_universes = ()
 
 
 def parse_inject_tensors(exec_config, comp_config):
@@ -56,12 +63,24 @@ def parse_inject_tensors(exec_config, comp_config):
                 if not file.endswith(".npy"):
                     comp_config.inject_tensors[t] = get_edge_path(comp_config.ort, file)
                 comp_config.inject_tensors[t[:i]] = file
+                break
         else:
             comp_config.inject_tensors[t] = get_edge_path(comp_config.ort, t)
+    injected = set(comp_config.inject_tensors)
+    universes = (injected,) + tuple(comp_config.alias_name_universes)
+    aliases = {}
+    for name, path in comp_config.inject_tensors.items():
+        alias = output_name_alias(name)
+        if alias is None or alias_pair_occupied(name, alias, universes):
+            continue
+        aliases[alias] = path
+    for alias, path in aliases.items():
+        if alias not in comp_config.inject_tensors:
+            comp_config.inject_tensors[alias] = path
     print("Inject tensors:", comp_config.inject_tensors)
 
 
-def create_acc_comp_config(exec_config):
+def create_acc_comp_config(exec_config, occupied_names=None):
     result = AccCompConfig()
     if exec_config.save_verify_data:
         result.root = exec_config.save_verify_data
@@ -77,8 +96,14 @@ def create_acc_comp_config(exec_config):
     result.ort_cpu = exec_config.ort_cpu
     result.inject_tensors = {}
     result.only_verify_outputs = exec_config.only_verify_outputs
+    result.verify_tensors = exec_config.verify_tensors
     result.tensors_to_watch = exec_config.watch
     result.precision = exec_config.precision
+    engine_names = set(occupied_names or ())
+    onnx_names = collect_onnx_tensor_names(result.onnx_path)
+    result.alias_name_universes = tuple(
+        universe for universe in (engine_names, onnx_names) if universe
+    )
     os.makedirs(result.ixrt, exist_ok=True)
     os.makedirs(result.ort, exist_ok=True)
     parse_inject_tensors(exec_config, result)

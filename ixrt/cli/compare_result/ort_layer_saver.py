@@ -35,6 +35,27 @@ except Exception as e:
 __all__ = ["OrtLayerSaver"]
 
 
+ORT_TYPE_TO_NUMPY = {
+    "tensor(float)": np.float32,
+    "tensor(double)": np.float64,
+    "tensor(float16)": np.float16,
+    "tensor(int64)": np.int64,
+    "tensor(int32)": np.int32,
+    "tensor(int8)": np.int8,
+    "tensor(uint8)": np.uint8,
+    "tensor(bool)": np.bool_,
+}
+
+
+def adapt_buffer_to_ort_input(buffer, ort_input):
+    expected = ORT_TYPE_TO_NUMPY.get(ort_input.type)
+    if expected is None or buffer.dtype == expected:
+        return buffer
+    if buffer.dtype == np.uint16:
+        buffer = (buffer.astype(np.uint32) << np.uint32(16)).view(np.float32)
+    return buffer.astype(expected)
+
+
 class OrtLayerSaver:
     def __init__(self, config, input_buffers):
         self.config = config
@@ -47,9 +68,17 @@ class OrtLayerSaver:
         # files remain on disk and OnnxRuntime resolves them by path.
         raw_onnx = onnx.load(self.config.onnx_path, load_external_data=False)
         # 1. add extend output
-        for node in raw_onnx.graph.node:
-            for output in node.output:
-                raw_onnx.graph.output.extend([onnx.ValueInfoProto(name=output)])
+        extra = list(self.config.verify_tensors or [])
+        if extra:
+            existing = {o.name for o in raw_onnx.graph.output}
+            for name in extra:
+                if name not in existing:
+                    raw_onnx.graph.output.extend([onnx.ValueInfoProto(name=name)])
+                    existing.add(name)
+        elif not self.config.only_verify_outputs:
+            for node in raw_onnx.graph.node:
+                for output in node.output:
+                    raw_onnx.graph.output.extend([onnx.ValueInfoProto(name=output)])
         # 2. Start to infer
         if self.config.ort_cpu:
             providers = ["CPUExecutionProvider"]
@@ -77,7 +106,9 @@ class OrtLayerSaver:
         input_buffers = {}
         for input in ort_session.get_inputs():
             input_name = input.name
-            input_buffers[input_name] = self.input_buffers[input_name]
+            input_buffers[input_name] = adapt_buffer_to_ort_input(
+                self.input_buffers[input_name], input
+            )
 
         outputs = [x.name for x in ort_session.get_outputs()]
         ort_outs = ort_session.run(outputs, input_buffers)

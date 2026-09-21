@@ -19,3 +19,37 @@ import os
 
 def get_edge_path(root, name):
     return os.path.join(root, name.replace("/", "$") + ".npy")
+
+
+def output_name_alias(name):
+    if name.endswith("_output_0"):
+        return name[:-2]
+    if name.endswith("_output"):
+        return name + "_0"
+    return None
+
+
+def alias_pair_occupied(name, alias, universes):
+    if not alias:
+        return False
+    return any(name in universe and alias in universe for universe in universes)
+
+
+def collect_onnx_tensor_names(onnx_path):
+    names = set()
+    if not onnx_path or not os.path.isfile(onnx_path):
+        return names
+    try:
+        import onnx
+
+        model = onnx.load(onnx_path, load_external_data=False)
+    except Exception:
+        return names
+    graph = model.graph
+    for value in list(graph.input) + list(graph.output) + list(graph.value_info):
+        if value.name:
+            names.add(value.name)
+    for node in graph.node:
+        names.update(n for n in node.input if n)
+        names.update(n for n in node.output if n)
+    return names

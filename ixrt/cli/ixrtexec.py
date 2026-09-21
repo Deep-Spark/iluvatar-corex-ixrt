@@ -33,6 +33,7 @@ from onnx import helper, TensorProto
 import ixrt
 from tabulate import tabulate
 from ixrt.cli.compare_result import IxrtLayerSaver, create_acc_comp_config
+from ixrt.cli.compare_result.kernel_verify import print_kernel_verify_report
 from ixrt.cli.utils import (
     args_parser,
     check_cuda_errors,
@@ -537,7 +538,12 @@ def main():
             hook, create_hook(hook), ixrt.ExecutionHookFlag.POSTRUN
         )
     if exec_config.verify_acc:
-        acc_verify_config = create_acc_comp_config(exec_config)
+        occupied_names = {
+            engine.get_binding_name(i) for i in range(engine.num_bindings)
+        }
+        acc_verify_config = create_acc_comp_config(
+            exec_config, occupied_names=occupied_names
+        )
         exec_config.iterations = 1
         exec_config.warmUp = 0
         ixrt_layer_saver = IxrtLayerSaver(acc_verify_config.ixrt, acc_verify_config.tensors_to_watch)
@@ -549,15 +555,38 @@ def main():
         context.register_hook(
             "inject_external_input",
             create_hook(
-                "inject_external_input", external_input=acc_verify_config.inject_tensors
+                "inject_external_input",
+                external_input=acc_verify_config.inject_tensors,
+                name_universes=acc_verify_config.alias_name_universes,
             ),
             ixrt.ExecutionHookFlag.PRERUN,
         )
+    kernel_verify_report = None
+    if getattr(exec_config, "verify_kernel", None) is not None:
+        exec_config.iterations = 1
+        exec_config.warmUp = 0
+        if exec_config.verify_kernel:
+            kernel_verify_report = os.path.abspath(exec_config.verify_kernel)
+            report_dir = os.path.dirname(kernel_verify_report)
+            if report_dir:
+                os.makedirs(report_dir, exist_ok=True)
+        else:
+            kernel_verify_report = os.path.join(
+                os.environ.get("TMPDIR", "/tmp"),
+                f"ixrt_verify_kernel_{os.getpid()}.json",
+            )
+        # IXRT_VERIFY_KERNEL is both the on switch and the JSON report path: the
+        # native verifier enables itself when it is non-empty and writes the
+        # report to this path.
+        os.environ["IXRT_VERIFY_KERNEL"] = kernel_verify_report
+        if os.path.exists(kernel_verify_report):
+            os.remove(kernel_verify_report)
     # Setup I/O bindings
     bsz = None
     input_bindings = []
     output_bindings = []
     dptrs = []
+    shape_input_host_buffers = {}
 
     # set input shapes
     for i in range(engine.num_bindings):
@@ -593,6 +622,18 @@ def main():
                     name, "x".join([str(i) for i in shape])
                 )
             )
+
+    for i in range(engine.num_bindings):
+        name = engine.get_binding_name(i)
+        if not engine.binding_is_input(i) or not engine.is_shape_inference_io(name):
+            continue
+        assert (
+            name in custom_buffers
+        ), f"Shape input tensor '{name}' requires its value via --load_inputs {name}:<file>"
+        dtype = np.dtype(ixrt.nptype(engine.get_binding_dtype(i)))
+        host_buffer = np.ascontiguousarray(np.load(custom_buffers[name]).astype(dtype))
+        shape_input_host_buffers[name] = host_buffer
+        context.set_tensor_address(name, host_buffer.ctypes.data)
 
     # After all input shapes set, output shape can be acquired
     for i in range(engine.num_bindings):
@@ -700,6 +741,17 @@ def main():
         )
         if not exec_config.save_verify_data:
             shutil.rmtree(acc_verify_config.root)
+        exit(0 if ok else 1)
+    if getattr(exec_config, "verify_kernel", None) is not None:
+        ok = print_kernel_verify_report(kernel_verify_report)
+        if exec_config.verify_kernel:
+            print(f"[verify_kernel] report saved: {kernel_verify_report}")
+        else:
+            # Auto-generated temporary report: nothing downstream refers to it.
+            if os.path.exists(kernel_verify_report):
+                os.remove(kernel_verify_report)
+        # keep env clean for subsequent runs in same process
+        os.environ.pop("IXRT_VERIFY_KERNEL", None)
         exit(0 if ok else 1)
     fps = exec_config.iterations * bsz / (end_time - start_time)
     throughput = exec_config.iterations / (end_time - start_time)

@@ -302,7 +302,17 @@ def compare_ixrt_ort_layer_output(ixrt_saver, ort_saver, config, model_outputs):
     error_recorder = ixrt_saver.error_recorder
     print("Start to compare layer output between IxRT and Ort")
 
-    if config.only_verify_outputs:
+    if config.verify_tensors:
+        wanted = list(dict.fromkeys(list(model_outputs) + list(config.verify_tensors)))
+        ixrt_result = {}
+        for name in wanted:
+            if name in ixrt_saver.inference_result:
+                ixrt_result[name] = ixrt_saver.inference_result[name]
+            else:
+                error_recorder.append(
+                    f"{name} was requested via --verify_tensors but not dumped by IxRT"
+                )
+    elif config.only_verify_outputs:
         ixrt_result = {i: ixrt_saver.inference_result[i] for i in model_outputs}
     else:
         ixrt_result = ixrt_saver.inference_result

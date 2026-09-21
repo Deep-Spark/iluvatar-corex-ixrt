@@ -145,6 +145,17 @@ def args_parser():
         help="Verify IxRT's computing acc with 3rd framework (now only onnxruntime)",
     )
     parser.add_argument(
+        "--verify_kernel",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="REPORT_JSON",
+        help="Verify each executed kernel against IxRT internal host CPU reference "
+        "(ORT-free). Prints kernel signature and FuncConfig on each layer. Optionally "
+        "takes the path to keep the JSON report at, e.g. '--verify_kernel report.json'; "
+        "without a path the report goes to a temporary file",
+    )
+    parser.add_argument(
         "--cosine_sim",
         type=float,
         default=0.999,
@@ -213,6 +224,15 @@ def args_parser():
         "--only_verify_outputs",
         action="store_true",
         help="Used in accuracy verification. When specified, only verify model outputs instead of all layers",
+    )
+    parser.add_argument(
+        "--verify_tensors",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Used in accuracy verification. Compare only these ONNX edge names "
+        "(plus model outputs). They are also added as extra OnnxRuntime outputs, "
+        "so a large graph does not need every intermediate promoted.",
     )
     parser.add_argument(
         "--timingCacheFile",

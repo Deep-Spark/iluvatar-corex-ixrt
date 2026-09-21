@@ -37,6 +37,11 @@ def generate_data(data_name, data_shape, data_types):
             raise ValueError(f"unsupported data type {data_type}")
     return np_data
 
+
+def float_to_bf16_bits(array):
+    return (array.astype(np.float32).view(np.uint32) >> 16).astype(np.uint16)
+
+
 def generate_output_buffers(data_bindings):
     data_buffer = {}
     for data_binding in data_bindings:
@@ -56,7 +61,9 @@ def generate_input_buffers(data_bindings, custom_buffers=None):
         normal_samples = np.clip(np.random.normal(0.5, 0.25, _shape), 0.0, 1.0)
         if _dtype in (np.float32, np.float16, np.float64):
             buffer = normal_samples.astype(_dtype)
-        elif _dtype in (np.int8, np.int16, np.int32, np.int64, np.bool_):
+        elif _dtype == np.uint16:
+            buffer = float_to_bf16_bits(normal_samples)
+        elif _dtype in (np.int8, np.uint8, np.int16, np.int32, np.int64, np.bool_):
             buffer = np.round(normal_samples).astype(_dtype)
         else:
             raise Exception("Not supported data initialization for", _dtype)
@@ -64,7 +71,11 @@ def generate_input_buffers(data_bindings, custom_buffers=None):
         if custom_buffers:
             if _name in custom_buffers:
                 if (custom_buffers[_name].endswith(".npy")):
-                    buffer = np.load(custom_buffers[_name]).astype(_dtype)
+                    custom_data = np.load(custom_buffers[_name])
+                    if _dtype == np.uint16 and custom_data.dtype != np.uint16:
+                        buffer = float_to_bf16_bits(custom_data)
+                    else:
+                        buffer = custom_data.astype(_dtype)
                 else:
                     buffer = np.fromfile(custom_buffers[_name], _dtype).reshape(_shape)
         data_buffer[_name] = buffer
