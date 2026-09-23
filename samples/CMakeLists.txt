@@ -2,7 +2,6 @@ set(OPENSOURCE_SAMPLES_LIST
      sampleYoloV5
      sampleResNet
      sampleYoloX
-     sampleBert
      sampleTypedNetwork
      sampleCondition
      sampleYoloV3

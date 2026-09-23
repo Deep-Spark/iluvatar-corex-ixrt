@@ -17,7 +17,6 @@
 | [sampleTypedNetwork](TypedNetwork)                 | C++      | API    | Demonstrate strongly/weakly API usage                                                    |
 | [sampleCondition](sampleCondition)                 | C++      | API    | Build network with IxRT conditional layer API                                            |
 | [sampleHideDataTransfer](sampleHideDataTransfer) | C++      | ONNX   | Hide data transfer with ResNet18 ONNX                                                    |
-| [sampleBert](sampleBert)                         | Python   | ONNX   | Construct an int8 and fp16 Bert with IxRT custom layer API                               |
 | [python](python)                                 | Python   | ONNX   | IXRT Quantization and Example Tool Using Python API                                      |
 | [plugins](plugins)                               | C++      | ONNX   | The plugin library provided by IxRT, which includes the NMSplugin and YOLOdecoder plugin |
 
