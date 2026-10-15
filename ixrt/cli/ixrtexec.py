@@ -181,6 +181,11 @@ def create_serialized_network_by_build(exec_config):
         if "bf16" in exec_config.precision:
             build_config.set_flag(ixrt.BuilderFlag.BF16)
 
+    if exec_config.refit:
+        build_config.set_flag(ixrt.BuilderFlag.REFIT)
+    if exec_config.strip_weights:
+        build_config.set_flag(ixrt.BuilderFlag.STRIP_PLAN)
+
     assert parse_status, "Failed to parse model, please go back to check error message!"
     opt_profile = builder.create_optimization_profile()
     if is_dynamic_model:
@@ -422,6 +427,55 @@ def create_engine(exec_config):
     return serialized_network
 
 
+def fill_stripped_weights(exec_config, serialized_network, logger):
+    """Refills the weights of a stripped plan from the --onnx model.
+
+    Returns the plan to run: the input plan when it holds all its weights, otherwise a full plan serialized after the
+    refill. The plan written by --save_engine is not touched.
+    """
+    runtime = ixrt.Runtime(logger)
+    engine = runtime.deserialize_cuda_engine(serialized_network)
+    if engine is None:
+        raise Exception("Failed to deserialize the engine to check for stripped weights")
+    try:
+        refitter = ixrt.Refitter(engine, logger)
+    except TypeError:
+        # An engine built without a refit flag holds all of its weights; no refitter can be created for it.
+        return serialized_network
+    missing = list(refitter.get_missing_weights())
+    if not missing:
+        return serialized_network
+    if not exec_config.onnx:
+        raise ValueError(
+            "The engine is stripped ({} weights missing); pass --onnx so ixrtexec can refill them before inference".format(
+                len(missing)
+            )
+        )
+
+    onnx_path = exec_config.onnx
+    converted_model = ".tmp.refit_converted_opset11.onnx"
+    if convert_opset_version(onnx_path, converted_model):
+        onnx_path = converted_model
+    try:
+        parser_refitter = ixrt.OnnxParserRefitter(refitter, logger)
+        if not parser_refitter.refit_from_file(onnx_path):
+            errors = [str(parser_refitter.get_error(i)) for i in range(parser_refitter.num_errors)]
+            raise RuntimeError("Failed to refill the stripped weights from {}: {}".format(exec_config.onnx, errors))
+        if not refitter.refit_cuda_engine():
+            raise RuntimeError("Failed to refit the stripped engine")
+    finally:
+        if os.path.exists(converted_model):
+            os.remove(converted_model)
+    still_missing = list(refitter.get_missing_weights())
+    if still_missing:
+        raise RuntimeError("Weights are still missing after the refill: {}".format(still_missing))
+    print("Refilled {} stripped weights from {}".format(len(missing), exec_config.onnx))
+    filled = engine.serialize()
+    if filled is None:
+        raise RuntimeError("Failed to serialize the refilled engine")
+    return filled
+
+
 def load_plugins(logger, exec_config):
     default_plugins = {
         "ixrt_plugin": join(dirname(__file__), "..", "lib", "libixrt_plugin.so")
@@ -473,6 +527,8 @@ def main():
     if exec_config.run_profiler:
         os.environ["IXRT_USE_PROFILER"] = "1"
     serialized_network = create_engine(exec_config)
+    if exec_config.strip_weights or exec_config.load_engine:
+        serialized_network = fill_stripped_weights(exec_config, serialized_network, IXRT_LOGGER)
     custom_buffers = parse_custom_inputs(exec_config)
     #  parse input shapes
     inference_input_shapes = parse_inference_input_shapes(exec_config)

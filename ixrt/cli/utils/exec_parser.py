@@ -259,6 +259,23 @@ def args_parser():
         help="Create a strongly typed network. (default = disabled)",
     )
     parser.add_argument("--gpus", type=int, nargs="+", default=None, help="GPU IDs to use")
+    parser.add_argument(
+        "--stripWeights",
+        "--strip_weights",
+        dest="strip_weights",
+        action="store_true",
+        help="Strip the weights from the engine plan. By default the stripped engine is built to be refit with "
+        "identical weights; add --refit to allow refitting with different weights. The plan written by "
+        "--save_engine has no weights. Before inference ixrtexec refills them from the --onnx model, so a stripped "
+        "engine loaded with --load_engine needs --onnx as well. (default = disabled)",
+    )
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        help="Build a refittable engine whose weights can all be replaced (BuilderFlag.REFIT). "
+        "Combined with --stripWeights the stripped engine is refit with the weights from --onnx. "
+        "(default = disabled)",
+    )
 
     config = parser.parse_args()
     return config
