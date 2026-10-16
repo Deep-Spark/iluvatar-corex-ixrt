@@ -32,6 +32,15 @@ from .onnx_model import OnnxModel
 logger = getLogger(__name__)
 
 
+def _edge_rank(model: OnnxModel, name: str):
+    """Return tensor rank from graph value_info / io, or None if unknown."""
+    graph = model.graph()
+    for vi in list(graph.value_info) + list(graph.input) + list(graph.output):
+        if vi.name == name:
+            return len(vi.type.tensor_type.shape.dim)
+    return None
+
+
 class FusionCustomFCGPT2(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "CustomFCPluginDynamic_IxRT", ["Reshape"], "gpt2")
@@ -43,6 +52,21 @@ class FusionCustomFCGPT2(Fusion):
             return False
 
         (matmul, reshape_before_matmul) = nodes
+
+        # CustomFC only rewrites the last dim (out_dims). The GPT2 pattern is
+        # flatten 3D→2D, Gemm, unflatten back to 3D. CLIP/ViT attention instead
+        # does Gemm then Reshape 3D→4D (heads). Fusing that Reshape away leaves
+        # a 4D Transpose perm on a rank-3 tensor and IxRT aborts in shape analysis.
+        in_rank = _edge_rank(self.model, reshape_before_matmul.input[0])
+        out_rank = _edge_rank(self.model, node.output[0])
+        if in_rank is not None and out_rank is not None and in_rank != out_rank:
+            logger.debug(
+                "Skip CustomFC GPT2 fusion on %s: reshape rank %s -> %s is not flatten/unflatten",
+                node.name,
+                in_rank,
+                out_rank,
+            )
+            return False
 
         matmul_weight = self.model.get_initializer(matmul.input[1])
         matmul_bias = self.model.get_initializer(matmul.input[2])
