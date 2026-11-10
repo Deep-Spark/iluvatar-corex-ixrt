@@ -107,9 +107,9 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_attention(self):
         self.attention_fusion.apply()
-        FusionAlbertAttention(
-            self, self.hidden_size, self.num_heads, self.attention_mask
-        ).apply()
+        # FusionAlbertAttention emits CustomFCPluginDynamic_IxRT nodes, whose
+        # creator was removed from ixrt_plugin (SWAPP-1818); leave the
+        # projections as MatMul/Add for ixrt built-in ops instead (TEST-15156).
         FusionVideoBertAttention(self).apply()
         FusionVITAttention(self).apply()
         FusionTorchvisionVITAttention(self).apply()
@@ -524,7 +524,9 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
 
-        self.fuse_custom_fc()
+        # CustomFCPluginDynamic_IxRT was removed from ixrt_plugin (SWAPP-1818);
+        # its MatMul+bias functionality is covered by ixrt built-in ops, so the
+        # BERT path must not emit the plugin node anymore (TEST-15156).
         
         if options.enable_omdet:
             self.fuse_omdet_attention()
@@ -564,7 +566,7 @@ class BertOnnxModel(OnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
-        self.fuse_custom_fc_activation()
+        # See above: no CustomFC plugin nodes on the BERT path (TEST-15156).
         
         if options.enable_vit:
             self.fuse_custom_fc_torchvision_vit()
